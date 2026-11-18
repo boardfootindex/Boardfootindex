@@ -4,19 +4,123 @@
   <title>BoardfootIndex | Lumber & Workshop Cost Index</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
-    body { font-family: sans-serif; max-width: 900px; margin: 0 auto; text-align: center; padding: 60px 20px; color: #333; }
-    h1 { font-size: 2.5rem; color: #111; margin-bottom: 10px; }
-    p { font-size: 1.2rem; color: #666; margin-bottom: 40px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 20px; text-align: left; }
-    th, td { padding: 12px 14px; border-bottom: 1px solid #ddd; }
-    th { background-color: #f5f5f5; font-weight: 600; color: #111; }
-    tr:hover { background-color: #fafafa; }
-    .status { color: #666; font-style: italic; }
+    body {
+      font-family: sans-serif;
+      max-width: 960px;
+      margin: 0 auto;
+      text-align: center;
+      padding: 60px 20px;
+      color: #333;
+    }
+    h1 {
+      font-size: 2.5rem;
+      color: #111;
+      margin-bottom: 10px;
+    }
+    p.subtitle {
+      font-size: 1.2rem;
+      color: #666;
+      margin-bottom: 32px;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      text-align: left;
+    }
+    .filter-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .filter-btn {
+      padding: 8px 14px;
+      border: 1px solid #ccc;
+      background-color: #fff;
+      color: #222;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.95rem;
+      transition: all 0.15s ease;
+    }
+    .filter-btn:hover {
+      background-color: #f3f4f6;
+    }
+    .filter-btn.active {
+      background-color: #111;
+      color: #fff;
+      border-color: #111;
+      font-weight: 600;
+    }
+    .search-box {
+      padding: 9px 14px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      min-width: 240px;
+      color: #222;
+    }
+    .search-box:focus {
+      outline: none;
+      border-color: #111;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      text-align: left;
+    }
+    th, td {
+      padding: 12px 14px;
+      border-bottom: 1px solid #ddd;
+    }
+    th {
+      background-color: #f5f5f5;
+      font-weight: 600;
+      color: #111;
+    }
+    tr:hover {
+      background-color: #fafafa;
+    }
+    .status {
+      color: #666;
+      font-style: italic;
+      margin-top: 24px;
+    }
+    .result-count {
+      font-size: 0.9rem;
+      color: #666;
+      text-align: left;
+      margin-bottom: 8px;
+    }
   </style>
 </head>
 <body>
   <h1>BoardfootIndex</h1>
-  <p>Automated outbuilding, workshop, and lumber price tracking engine coming online.</p>
+  <p class="subtitle">Automated outbuilding, workshop, and lumber price tracking engine coming online.</p>
+
+  <div class="controls">
+    <div class="filter-buttons" id="filter-buttons">
+      <button type="button" class="filter-btn active" data-category="All">All</button>
+      <button type="button" class="filter-btn" data-category="Framing Lumber">Framing Lumber</button>
+      <button type="button" class="filter-btn" data-category="Headers & Beams">Headers & Beams</button>
+      <button type="button" class="filter-btn" data-category="Construction Plywood">Construction Plywood</button>
+      <button type="button" class="filter-btn" data-category="Cabinet Plywood">Cabinet Plywood</button>
+    </div>
+
+    <input
+      type="search"
+      id="search-input"
+      class="search-box"
+      placeholder="Search material, size, or source..."
+      aria-label="Search lumber prices"
+    />
+  </div>
+
+  <div id="result-count" class="result-count"></div>
 
   <div id="prices-container">
     <p class="status">Loading lumber prices...</p>
@@ -27,32 +131,48 @@
     const SUPABASE_ANON_KEY = 'sb_publishable_K66EHMpK9sulhGWaHdhPSQ_rm0AvcZG';
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+    let allPrices = [];
+    let activeCategory = 'All';
+    let searchQuery = '';
+
     function formatPrice(val) {
       if (val === null || val === undefined || val === '') return '—';
       return `$${Number(val).toFixed(2)}`;
     }
 
-    async function loadPrices() {
+    function renderTable() {
       const container = document.getElementById('prices-container');
-      const { data, error } = await supabaseClient
-        .from('lumber_prices')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const countEl = document.getElementById('result-count');
 
-      if (error) {
-        console.error('Error:', error);
-        container.innerHTML = `<p style="color: #b00020;">Could not load prices: ${error.message}</p>`;
+      const filtered = allPrices.filter(item => {
+        const matchesCategory =
+          activeCategory === 'All' || (item.category || '').trim() === activeCategory;
+
+        const q = searchQuery.trim().toLowerCase();
+        const matchesSearch =
+          !q ||
+          [
+            item.material_name,
+            item.category,
+            item.dimensions,
+            item.source_name,
+            item.notes,
+            item.unit_label
+          ]
+            .filter(Boolean)
+            .some(field => String(field).toLowerCase().includes(q));
+
+        return matchesCategory && matchesSearch;
+      });
+
+      countEl.textContent = `Showing ${filtered.length} of ${allPrices.length} items`;
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<p class="status">No matching lumber items found.</p>';
         return;
       }
 
-      console.log('Lumber Data:', data);
-
-      if (!data || data.length === 0) {
-        container.innerHTML = '<p class="status">No lumber prices found yet.</p>';
-        return;
-      }
-
-      const rowsHtml = data.map(item => `
+      const rowsHtml = filtered.map(item => `
         <tr>
           <td><strong>${item.material_name ?? ''}</strong></td>
           <td>${item.category ?? '—'}</td>
@@ -82,6 +202,42 @@
       `;
     }
 
+    function setupControls() {
+      const buttons = document.querySelectorAll('.filter-btn');
+      buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          buttons.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          activeCategory = btn.dataset.category;
+          renderTable();
+        });
+      });
+
+      const searchInput = document.getElementById('search-input');
+      searchInput.addEventListener('input', e => {
+        searchQuery = e.target.value;
+        renderTable();
+      });
+    }
+
+    async function loadPrices() {
+      const container = document.getElementById('prices-container');
+      const { data, error } = await supabaseClient
+        .from('lumber_prices')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error:', error);
+        container.innerHTML = `<p style="color: #b00020;">Could not load prices: ${error.message}</p>`;
+        return;
+      }
+
+      allPrices = data || [];
+      renderTable();
+    }
+
+    setupControls();
     loadPrices();
   </script>
 </body>
