@@ -83,6 +83,22 @@
       font-weight: 600;
       color: #111;
     }
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    th.sortable:hover {
+      background-color: #eaeaea;
+    }
+    .sort-indicator {
+      margin-left: 6px;
+      font-size: 0.75rem;
+      color: #666;
+    }
+    th.sorted .sort-indicator {
+      color: #111;
+    }
     tr:hover {
       background-color: #fafafa;
     }
@@ -90,6 +106,7 @@
       color: #0b57d0;
       text-decoration: none;
       font-weight: 500;
+      white-space: nowrap;
     }
     a.source-link:hover {
       text-decoration: underline;
@@ -140,9 +157,20 @@
     const SUPABASE_ANON_KEY = 'sb_publishable_K66EHMpK9sulhGWaHdhPSQ_rm0AvcZG';
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+    const COLUMNS = [
+      { key: 'material_name', label: 'Material', type: 'text' },
+      { key: 'category', label: 'Category', type: 'text' },
+      { key: 'dimensions', label: 'Dimensions', type: 'text' },
+      { key: 'price_per_board_foot', label: '$/BF', type: 'number' },
+      { key: 'unit_price', label: 'Unit Price', type: 'number' },
+      { key: 'source_name', label: 'Source', type: 'text' }
+    ];
+
     let allPrices = [];
     let activeCategory = 'All';
     let searchQuery = '';
+    let sortKey = null;
+    let sortDirection = 'asc'; // 'asc' | 'desc'
 
     function formatPrice(val) {
       if (val === null || val === undefined || val === '') return '—';
@@ -166,6 +194,45 @@
         return `<a class="source-link" href="${safeHref}" target="_blank" rel="noopener noreferrer">${label} ↗</a>`;
       }
       return item.source_name ?? '—';
+    }
+
+    function compareItems(a, b) {
+      if (!sortKey) return 0;
+
+      const col = COLUMNS.find(c => c.key === sortKey);
+      const valA = a[sortKey];
+      const valB = b[sortKey];
+
+      if (col && col.type === 'number') {
+        const numA = valA === null || valA === undefined || valA === '' ? null : Number(valA);
+        const numB = valB === null || valB === undefined || valB === '' ? null : Number(valB);
+
+        if (numA === null && numB === null) return 0;
+        if (numA === null) return 1; // keep missing prices at bottom
+        if (numB === null) return -1;
+
+        return sortDirection === 'asc' ? numA - numB : numB - numA;
+      }
+
+      const strA = (valA ?? '').toString().trim().toLowerCase();
+      const strB = (valB ?? '').toString().trim().toLowerCase();
+
+      if (!strA && !strB) return 0;
+      if (!strA) return 1;
+      if (!strB) return -1;
+
+      const cmp = strA.localeCompare(strB, undefined, { numeric: true, sensitivity: 'base' });
+      return sortDirection === 'asc' ? cmp : -cmp;
+    }
+
+    function handleSortClick(key) {
+      if (sortKey === key) {
+        sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortKey = key;
+        sortDirection = 'asc';
+      }
+      renderTable();
     }
 
     function renderTable() {
@@ -194,14 +261,28 @@
         return matchesCategory && matchesSearch;
       });
 
-      countEl.textContent = `Showing ${filtered.length} of ${allPrices.length} items`;
+      const sorted = sortKey ? [...filtered].sort(compareItems) : filtered;
 
-      if (filtered.length === 0) {
+      countEl.textContent = `Showing ${sorted.length} of ${allPrices.length} items`;
+
+      if (sorted.length === 0) {
         container.innerHTML = '<p class="status">No matching lumber items found.</p>';
         return;
       }
 
-      const rowsHtml = filtered.map(item => `
+      const headersHtml = COLUMNS.map(col => {
+        const isSorted = sortKey === col.key;
+        const indicator = isSorted
+          ? (sortDirection === 'asc' ? '▲' : '▼')
+          : '⇅';
+        return `
+          <th class="sortable ${isSorted ? 'sorted' : ''}" data-sort-key="${col.key}">
+            ${col.label}<span class="sort-indicator">${indicator}</span>
+          </th>
+        `;
+      }).join('');
+
+      const rowsHtml = sorted.map(item => `
         <tr>
           <td><strong>${item.material_name ?? ''}</strong></td>
           <td>${item.category ?? '—'}</td>
@@ -216,12 +297,7 @@
         <table>
           <thead>
             <tr>
-              <th>Material</th>
-              <th>Category</th>
-              <th>Dimensions</th>
-              <th>$/BF</th>
-              <th>Unit Price</th>
-              <th>Source</th>
+              ${headersHtml}
             </tr>
           </thead>
           <tbody>
@@ -229,6 +305,10 @@
           </tbody>
         </table>
       `;
+
+      container.querySelectorAll('th.sortable').forEach(th => {
+        th.addEventListener('click', () => handleSortClick(th.dataset.sortKey));
+      });
     }
 
     function setupControls() {
