@@ -27,7 +27,7 @@
       flex-wrap: wrap;
       justify-content: space-between;
       align-items: center;
-      gap: 12px;
+      gap: 14px;
       margin-bottom: 20px;
       text-align: left;
     }
@@ -60,6 +60,7 @@
       border: 1px solid #ccc;
       border-radius: 6px;
       font-size: 0.95rem;
+      flex: 1;
       min-width: 240px;
       color: #222;
     }
@@ -84,6 +85,14 @@
     }
     tr:hover {
       background-color: #fafafa;
+    }
+    a.source-link {
+      color: #0b57d0;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    a.source-link:hover {
+      text-decoration: underline;
     }
     .status {
       color: #666;
@@ -115,7 +124,7 @@
       type="search"
       id="search-input"
       class="search-box"
-      placeholder="Search material, size, or source..."
+      placeholder="Search material, size, or store..."
       aria-label="Search lumber prices"
     />
   </div>
@@ -140,6 +149,25 @@
       return `$${Number(val).toFixed(2)}`;
     }
 
+    function isSafeUrl(url) {
+      if (!url) return false;
+      try {
+        const parsed = new URL(String(url).trim());
+        return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+      } catch {
+        return false;
+      }
+    }
+
+    function renderSourceCell(item) {
+      const label = item.source_name || 'View Store';
+      if (isSafeUrl(item.source_url)) {
+        const safeHref = String(item.source_url).trim();
+        return `<a class="source-link" href="${safeHref}" target="_blank" rel="noopener noreferrer">${label} ↗</a>`;
+      }
+      return item.source_name ?? '—';
+    }
+
     function renderTable() {
       const container = document.getElementById('prices-container');
       const countEl = document.getElementById('result-count');
@@ -156,6 +184,7 @@
             item.category,
             item.dimensions,
             item.source_name,
+            item.source_url,
             item.notes,
             item.unit_label
           ]
@@ -179,7 +208,7 @@
           <td>${item.dimensions ?? '—'}</td>
           <td>${formatPrice(item.price_per_board_foot)}</td>
           <td>${formatPrice(item.unit_price)} ${item.unit_label ? `<small>(${item.unit_label})</small>` : ''}</td>
-          <td>${item.source_name ?? '—'}</td>
+          <td>${renderSourceCell(item)}</td>
         </tr>
       `).join('');
 
