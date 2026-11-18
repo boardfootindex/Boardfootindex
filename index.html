@@ -1,15 +1,29 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>BoardfootIndex | Lumber & Workshop Cost Index</title>
-    <style>
-        body { font-family: sans-serif; text-align: center; padding-top: 100px; color: #333; }
-        h1 { font-size: 2.5rem; color: #111; }
-        p { font-size: 1.2rem; color: #666; }
-    </style>
+  <title>BoardfootIndex | Lumber & Workshop Cost Index</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body { font-family: sans-serif; text-align: center; padding-top: 100px; color: #333; }
+    h1 { font-size: 2.5rem; color: #111; }
+    p { font-size: 1.2rem; color: #666; }
+  </style>
 </head>
 <body>
-    <h1>BoardfootIndex</h1>
-    <p>Automated outbuilding, workshop, and lumber price tracking engine coming online.</p>
+  <h1>BoardfootIndex</h1>
+  <p>Automated outbuilding, workshop, and lumber price tracking engine coming online.</p>
+
+  <script>
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_PUBLISHABLE_KEY';
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function loadPrices() {
+      const { data, error } = await supabaseClient.from('lumber_prices').select('*');
+      if (error) console.error('Error:', error);
+      else console.log('Lumber Data:', data);
+    }
+    loadPrices();
+  </script>
 </body>
 </html>
