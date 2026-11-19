@@ -6,6 +6,9 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SCRAPER_API_KEY = process.env.SCRAPER_API_KEY || "";
 const ENABLE_JS_RENDER_FALLBACK = process.env.ENABLE_JS_RENDER_FALLBACK === "true";
 
+// Recurring site/promo/shipping decoys seen across retailer HTML/JSON-LD
+const BLOCKED_DECOY_PRICES = new Set([5, 99, 299]);
+
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
   process.exit(1);
@@ -40,7 +43,9 @@ function extractTitle(html = "") {
 
 function extractJsonLdPrices(html = "") {
   const prices = [];
-  const scriptMatches = [...html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
+  const scriptMatches = [
+    ...html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi),
+  ];
 
   for (const match of scriptMatches) {
     try {
@@ -59,7 +64,7 @@ function extractJsonLdPrices(html = "") {
         for (const key of ["price", "lowPrice", "highPrice"]) {
           if (current[key] !== undefined && current[key] !== null) {
             const num = Number.parseFloat(String(current[key]).replace(/[^0-9.]/g, ""));
-            if (Number.isFinite(num) && num >= 1 && num <= 2000) {
+            if (Number.isFinite(num) && num >= 1 && num <= 2000 && !BLOCKED_DECOY_PRICES.has(num)) {
               prices.push(num);
             }
           }
@@ -95,7 +100,9 @@ function extractHtmlTextPrices(html = "") {
 
   for (const match of matches) {
     const val = Number.parseFloat(match[1].replace(/,/g, ""));
-    if (!Number.isFinite(val) || val < 1 || val > 2000) continue;
+    if (!Number.isFinite(val) || val < 1 || val > 2000 || BLOCKED_DECOY_PRICES.has(val)) {
+      continue;
+    }
 
     const start = Math.max(0, (match.index ?? 0) - 40);
     const end = Math.min(text.length, (match.index ?? 0) + match[0].length + 40);
@@ -117,7 +124,7 @@ function selectBestPrice(candidates, currentPrice) {
   const numericCurrent = Number(currentPrice);
   if (Number.isFinite(numericCurrent) && numericCurrent > 0) {
     const withinRange = candidates.filter(
-      (p) => p >= numericCurrent * 0.4 && p <= numericCurrent * 2.2
+      (p) => p >= numericCurrent * 0.65 && p <= numericCurrent * 1.5
     );
     if (withinRange.length > 0) {
       return { status: "ok", price: withinRange[0] };
