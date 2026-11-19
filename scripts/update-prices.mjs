@@ -5,6 +5,8 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SCRAPER_API_KEY = process.env.SCRAPER_API_KEY || "";
 const ENABLE_JS_RENDER_FALLBACK = process.env.ENABLE_JS_RENDER_FALLBACK === "true";
+const REQUEST_TIMEOUT_MS = 25000;
+const CONCURRENCY = 3;
 
 // Recurring site/promo/shipping decoys seen across retailer HTML/JSON-LD
 const BLOCKED_DECOY_PRICES = new Set([5, 45, 99, 299]);
@@ -41,6 +43,10 @@ function extractTitle(html = "") {
   return match ? match[1].replace(/\s+/g, " ").trim() : "";
 }
 
+function isValidPriceCandidate(num) {
+  return Number.isFinite(num) && num >= 1 && num <= 2000 && !BLOCKED_DECOY_PRICES.has(num);
+}
+
 function extractJsonLdPrices(html = "") {
   const prices = [];
   const scriptMatches = [
@@ -64,7 +70,7 @@ function extractJsonLdPrices(html = "") {
         for (const key of ["price", "lowPrice", "highPrice"]) {
           if (current[key] !== undefined && current[key] !== null) {
             const num = Number.parseFloat(String(current[key]).replace(/[^0-9.]/g, ""));
-            if (Number.isFinite(num) && num >= 1 && num <= 2000 && !BLOCKED_DECOY_PRICES.has(num)) {
+            if (isValidPriceCandidate(num)) {
               prices.push(num);
             }
           }
@@ -75,6 +81,28 @@ function extractJsonLdPrices(html = "") {
       }
     } catch {
       // Ignore malformed JSON-LD blocks
+    }
+  }
+
+  return prices;
+}
+
+function extractEmbeddedScriptPrices(html = "") {
+  const prices = [];
+  const scriptMatches = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
+
+  const priceKeyRegex =
+    /"(?:price|salePrice|sellingPrice|unitPrice|finalPrice|regularPrice|offerPrice|value)"\s*:\s*"?\$?\s*(\d{1,4}(?:\.\d{1,2})?)"?/gi;
+
+  for (const scriptMatch of scriptMatches) {
+    const content = scriptMatch[1];
+    if (!content || content.length < 20) continue;
+
+    for (const match of content.matchAll(priceKeyRegex)) {
+      const num = Number.parseFloat(match[1]);
+      if (isValidPriceCandidate(num)) {
+        prices.push(num);
+      }
     }
   }
 
@@ -100,7 +128,7 @@ function extractHtmlTextPrices(html = "") {
 
   for (const match of matches) {
     const val = Number.parseFloat(match[1].replace(/,/g, ""));
-    if (!Number.isFinite(val) || val < 1 || val > 2000 || BLOCKED_DECOY_PRICES.has(val)) {
+    if (!isValidPriceCandidate(val)) {
       continue;
     }
 
@@ -140,16 +168,38 @@ function selectBestPrice(candidates, currentPrice) {
 }
 
 function extractPriceFromHtml(html, currentPrice) {
+  // 1. Structured JSON-LD
   const jsonLdCandidates = extractJsonLdPrices(html);
   if (jsonLdCandidates.length > 0) {
     const jsonPick = selectBestPrice(jsonLdCandidates, currentPrice);
-    if (jsonPick.status === "ok" || jsonPick.status === "outlier") {
-      return jsonPick;
-    }
+    if (jsonPick.status === "ok") return jsonPick;
   }
 
+  // 2. Embedded inline script / Next.js JSON state
+  const scriptCandidates = extractEmbeddedScriptPrices(html);
+  if (scriptCandidates.length > 0) {
+    const scriptPick = selectBestPrice(scriptCandidates, currentPrice);
+    if (scriptPick.status === "ok") return scriptPick;
+  }
+
+  // 3. Visible HTML text prices
   const textCandidates = extractHtmlTextPrices(html);
-  return selectBestPrice(textCandidates, currentPrice);
+  const textPick = selectBestPrice(textCandidates, currentPrice);
+  if (textPick.status === "ok") return textPick;
+
+  // Report best outlier candidate if any layer found out-of-range numbers
+  const firstOutlier =
+    jsonLdCandidates[0] ?? scriptCandidates[0] ?? textCandidates[0] ?? null;
+
+  if (firstOutlier !== null) {
+    return {
+      status: "outlier",
+      price: null,
+      candidate: firstOutlier,
+    };
+  }
+
+  return { status: "unparsed", price: null };
 }
 
 async function fetchPageHtml(targetUrl, renderJs = false) {
@@ -158,6 +208,7 @@ async function fetchPageHtml(targetUrl, renderJs = false) {
     : targetUrl;
 
   const response = await fetch(fetchUrl, {
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: SCRAPER_API_KEY
       ? {}
       : {
@@ -273,14 +324,27 @@ async function processRow(row) {
       );
     }
   } catch (err) {
+    const msg = err.name === "TimeoutError" ? `Timeout after ${REQUEST_TIMEOUT_MS / 1000}s` : err.message;
     report.failed.push({
       id: row.id,
       state: row.state,
       material: row.material_name,
-      error: err.message,
+      error: msg,
     });
-    console.log(`✕ Failed for ${label}: ${err.message}`);
+    console.log(`✕ Failed for ${label}: ${msg}`);
   }
+}
+
+async function runWithConcurrency(items, limit, worker) {
+  let index = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const currentIndex = index++;
+      if (currentIndex >= items.length) break;
+      await worker(items[currentIndex]);
+    }
+  });
+  await Promise.all(workers);
 }
 
 function writeStepSummary() {
@@ -346,9 +410,7 @@ async function main() {
   const catalog = (rows || []).filter((r) => Boolean(r.source_url));
   console.log(`Found ${catalog.length} rows with source URLs.`);
 
-  for (const row of catalog) {
-    await processRow(row);
-  }
+  await runWithConcurrency(catalog, CONCURRENCY, processRow);
 
   writeStepSummary();
 
