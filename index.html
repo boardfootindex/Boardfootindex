@@ -131,10 +131,12 @@
   <div class="controls">
     <div class="filter-buttons" id="filter-buttons">
       <button type="button" class="filter-btn active" data-category="All">All</button>
-      <button type="button" class="filter-btn" data-category="Framing Lumber">Framing Lumber</button>
-      <button type="button" class="filter-btn" data-category="Headers & Beams">Headers & Beams</button>
-      <button type="button" class="filter-btn" data-category="Construction Plywood">Construction Plywood</button>
-      <button type="button" class="filter-btn" data-category="Cabinet Plywood">Cabinet Plywood</button>
+      <button type="button" class="filter-btn" data-category="Framing & Posts">Framing &amp; Posts</button>
+      <button type="button" class="filter-btn" data-category="Headers & Beams">Headers &amp; Beams</button>
+      <button type="button" class="filter-btn" data-category="Sheathing & Subfloor">Sheathing &amp; Subfloor</button>
+      <button type="button" class="filter-btn" data-category="Trim & Paneling">Trim &amp; Paneling</button>
+      <button type="button" class="filter-btn" data-category="Cabinet Plywood & Sheet">Cabinet Plywood &amp; Sheet</button>
+      <button type="button" class="filter-btn" data-category="Hardwood Lumber">Hardwood Lumber</button>
     </div>
 
     <input
@@ -170,7 +172,7 @@
     let activeCategory = 'All';
     let searchQuery = '';
     let sortKey = null;
-    let sortDirection = 'asc'; // 'asc' | 'desc'
+    let sortDirection = 'asc';
 
     function formatPrice(val) {
       if (val === null || val === undefined || val === '') return '—';
@@ -208,7 +210,7 @@
         const numB = valB === null || valB === undefined || valB === '' ? null : Number(valB);
 
         if (numA === null && numB === null) return 0;
-        if (numA === null) return 1; // keep missing prices at bottom
+        if (numA === null) return 1;
         if (numB === null) return -1;
 
         return sortDirection === 'asc' ? numA - numB : numB - numA;
