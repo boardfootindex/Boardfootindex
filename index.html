@@ -26,6 +26,9 @@
       color: #666;
       margin-bottom: 28px;
     }
+    .print-meta {
+      display: none;
+    }
 
     /* Estimator Card */
     .estimator-card {
@@ -119,13 +122,15 @@
       background: #2b2b2b;
     }
     .secondary-btn {
-      padding: 6px 10px;
+      padding: 6px 11px;
       background: #fff;
-      color: #444;
+      color: #222;
       border: 1px solid #ccc;
       border-radius: 6px;
       font-size: 0.85rem;
+      font-weight: 500;
       cursor: pointer;
+      white-space: nowrap;
     }
     .secondary-btn:hover {
       background: #f0f0f0;
@@ -153,13 +158,25 @@
       border-top: 1px solid #e2e5e9;
       padding-top: 14px;
     }
+    .estimate-list-header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
     .estimate-list-title {
       font-size: 0.85rem;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.04em;
       color: #555;
-      margin-bottom: 8px;
+    }
+    .export-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
     }
     .estimate-item {
       display: flex;
@@ -328,11 +345,62 @@
       text-align: left;
       margin-bottom: 8px;
     }
+
+    /* Clean Print / Save PDF Layout */
+    @media print {
+      body {
+        padding: 0;
+        text-align: left;
+        color: #000;
+      }
+      h1 {
+        font-size: 1.8rem;
+        margin-bottom: 4px;
+      }
+      p.subtitle,
+      .estimator-tabs,
+      #panel-catalog,
+      #panel-bf,
+      .export-actions,
+      .remove-btn,
+      #clear-estimate-btn,
+      .controls,
+      #result-count,
+      #prices-container {
+        display: none !important;
+      }
+      .print-meta {
+        display: block;
+        font-size: 0.9rem;
+        color: #555;
+        margin-bottom: 18px;
+      }
+      .estimator-card {
+        background: #fff;
+        border: none;
+        padding: 0;
+        margin: 0;
+      }
+      .estimate-list {
+        border-top: 2px solid #111;
+        margin-top: 8px;
+      }
+      .estimate-item-actions input,
+      #waste-select {
+        border: none;
+        background: transparent;
+        font-weight: 600;
+        padding: 0;
+        appearance: none;
+        -webkit-appearance: none;
+      }
+    }
   </style>
 </head>
 <body>
   <h1>BoardfootIndex</h1>
   <p class="subtitle">Automated outbuilding, workshop, and lumber price tracking engine coming online.</p>
+  <p class="print-meta" id="print-meta"></p>
 
   <!-- Unified Project & Board-Foot Estimator -->
   <section class="estimator-card" aria-label="Project and Board-Foot Estimator">
@@ -448,7 +516,6 @@
     let sortDirection = 'asc';
 
     // Shared Takeoff List State
-    // Each entry: { key, name, dimensions, unitPrice, unitLabel, qty, isCustom, totalBf }
     let estimateItems = [];
     let wastePercent = 0;
 
@@ -493,7 +560,6 @@
         return `<option value="${item.id ?? idx}">${item.material_name} (${item.dimensions || ''}) — ${priceText}</option>`;
       }).join('');
 
-      // Seed default $/BF rate from Hardwood Lumber in Supabase if available
       const hardwoodItem = allPrices.find(
         i => (i.category || '').toLowerCase().includes('hardwood') && i.price_per_board_foot != null
       );
@@ -528,6 +594,82 @@
       `;
     }
 
+    function buildTakeoffPlainText() {
+      const dateStr = new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+
+      let subtotal = 0;
+      let totalCustomBf = 0;
+
+      const lines = estimateItems.map((entry, idx) => {
+        const lineTotal = entry.unitPrice * entry.qty;
+        subtotal += lineTotal;
+        if (entry.bfPerPiece) {
+          totalCustomBf += entry.bfPerPiece * entry.qty;
+        }
+        const storePart = entry.sourceName ? ` [${entry.sourceName}]` : '';
+        return `${idx + 1}. ${entry.name} (${entry.dimensions || '—'}) — Qty: ${entry.qty} × ${formatPrice(entry.unitPrice)} = ${formatPrice(lineTotal)}${storePart}`;
+      });
+
+      const totalWithWaste = subtotal * (1 + wastePercent / 100);
+
+      const summaryLines = [
+        `BoardfootIndex — Project Material Takeoff (${dateStr})`,
+        `--------------------------------------------------`,
+        ...lines,
+        `--------------------------------------------------`,
+        `Subtotal: ${formatPrice(subtotal)}`,
+        ...(wastePercent > 0 ? [`Waste Factor (+${wastePercent}%): ${formatPrice(totalWithWaste - subtotal)}`] : []),
+        ...(totalCustomBf > 0 ? [`Custom Lumber Volume: ${totalCustomBf.toFixed(2)} BF`] : []),
+        `Estimated Total: ${formatPrice(totalWithWaste)}`,
+        `Generated at https://boardfootindex.com`
+      ];
+
+      return summaryLines.join('\n');
+    }
+
+    async function copyTakeoffToClipboard(btnEl) {
+      const text = buildTakeoffPlainText();
+      try {
+        await navigator.clipboard.writeText(text);
+        const originalText = btnEl.textContent;
+        btnEl.textContent = 'Copied! ✓';
+        setTimeout(() => {
+          btnEl.textContent = originalText;
+        }, 2000);
+      } catch {
+        // Fallback for older browsers / restricted clipboard contexts
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+
+        const originalText = btnEl.textContent;
+        btnEl.textContent = 'Copied! ✓';
+        setTimeout(() => {
+          btnEl.textContent = originalText;
+        }, 2000);
+      }
+    }
+
+    function printTakeoff() {
+      const metaEl = document.getElementById('print-meta');
+      const dateStr = new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+      metaEl.textContent = `Project Material Takeoff · Printed ${dateStr} · boardfootindex.com`;
+      window.print();
+    }
+
     function renderEstimateList() {
       const wrapper = document.getElementById('estimate-list-wrapper');
       if (estimateItems.length === 0) {
@@ -549,13 +691,14 @@
         const bfNote = entry.bfPerPiece
           ? ` · ${(entry.bfPerPiece * entry.qty).toFixed(2)} BF`
           : '';
+        const storeNote = entry.sourceName ? ` · ${entry.sourceName}` : '';
 
         return `
           <div class="estimate-item">
             <div class="estimate-item-info">
               <strong>${entry.name}</strong>${customBadge}
               <div style="color: #666; font-size: 0.88rem; margin-top: 2px;">
-                ${entry.dimensions || '—'} · ${formatPrice(entry.unitPrice)} ${entry.unitLabel || ''}${bfNote}
+                ${entry.dimensions || '—'} · ${formatPrice(entry.unitPrice)} ${entry.unitLabel || ''}${bfNote}${storeNote}
               </div>
             </div>
             <div class="estimate-item-actions">
@@ -572,7 +715,13 @@
 
       wrapper.innerHTML = `
         <div class="estimate-list">
-          <div class="estimate-list-title">Project Takeoff List (${estimateItems.length} ${estimateItems.length === 1 ? 'line' : 'lines'})</div>
+          <div class="estimate-list-header">
+            <div class="estimate-list-title">Project Takeoff List (${estimateItems.length} ${estimateItems.length === 1 ? 'line' : 'lines'})</div>
+            <div class="export-actions">
+              <button type="button" class="secondary-btn" id="copy-takeoff-btn">Copy Takeoff</button>
+              <button type="button" class="secondary-btn" id="print-takeoff-btn">Print / Save PDF</button>
+            </div>
+          </div>
           ${itemsHtml}
           <div class="estimate-summary">
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
@@ -610,6 +759,14 @@
         });
       });
 
+      document.getElementById('copy-takeoff-btn').addEventListener('click', e => {
+        copyTakeoffToClipboard(e.currentTarget);
+      });
+
+      document.getElementById('print-takeoff-btn').addEventListener('click', () => {
+        printTakeoff();
+      });
+
       document.getElementById('waste-select').addEventListener('change', e => {
         wastePercent = Number(e.target.value);
         renderEstimateList();
@@ -642,7 +799,6 @@
         updateBoardFootCalc();
       });
 
-      // Add catalog item
       document.getElementById('add-to-estimate-btn').addEventListener('click', () => {
         const select = document.getElementById('material-select');
         const qtyInput = document.getElementById('material-qty');
@@ -663,6 +819,7 @@
             dimensions: matchedItem.dimensions,
             unitPrice: Number(matchedItem.unit_price || 0),
             unitLabel: matchedItem.unit_label || 'each',
+            sourceName: matchedItem.source_name || '',
             qty,
             isCustom: false,
             bfPerPiece: null
@@ -673,7 +830,6 @@
         renderEstimateList();
       });
 
-      // Add custom BF item into the SAME takeoff list
       document.getElementById('add-bf-to-estimate-btn').addEventListener('click', () => {
         const { label, t, w, l, qty, rate, bfPerPiece, pricePerPiece } = getBoardFootValues();
         if (bfPerPiece <= 0) return;
@@ -691,6 +847,7 @@
             dimensions: dims,
             unitPrice: pricePerPiece,
             unitLabel: `(${bfPerPiece.toFixed(2)} BF/pc)`,
+            sourceName: 'Custom BF',
             qty,
             isCustom: true,
             bfPerPiece
