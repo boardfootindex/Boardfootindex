@@ -1,15 +1,19 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BoardfootIndex | Lumber & Workshop Cost Index</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
+    * {
+      box-sizing: border-box;
+    }
     body {
       font-family: sans-serif;
-      max-width: 960px;
+      max-width: 980px;
       margin: 0 auto;
       text-align: center;
-      padding: 60px 20px;
+      padding: 48px 20px 80px;
       color: #333;
     }
     h1 {
@@ -18,10 +22,177 @@
       margin-bottom: 10px;
     }
     p.subtitle {
-      font-size: 1.2rem;
+      font-size: 1.15rem;
       color: #666;
-      margin-bottom: 32px;
+      margin-bottom: 28px;
     }
+
+    /* Estimator Card */
+    .estimator-card {
+      background-color: #f9fafb;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 32px;
+      text-align: left;
+    }
+    .estimator-header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .estimator-header h2 {
+      font-size: 1.25rem;
+      margin: 0;
+      color: #111;
+    }
+    .estimator-tabs {
+      display: flex;
+      gap: 8px;
+    }
+    .tab-btn {
+      padding: 6px 12px;
+      border: 1px solid #ccc;
+      background: #fff;
+      color: #222;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .tab-btn.active {
+      background: #111;
+      color: #fff;
+      border-color: #111;
+      font-weight: 600;
+    }
+    .estimator-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: flex-end;
+    }
+    .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .field-group label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #555;
+    }
+    .field-group select,
+    .field-group input {
+      padding: 9px 12px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      background: #fff;
+      color: #222;
+    }
+    .field-group.grow {
+      flex: 1;
+      min-width: 240px;
+    }
+    .field-group.small {
+      width: 105px;
+    }
+    .primary-btn {
+      padding: 9px 16px;
+      background: #111;
+      color: #fff;
+      border: 1px solid #111;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .primary-btn:hover {
+      background: #2b2b2b;
+    }
+    .secondary-btn {
+      padding: 6px 10px;
+      background: #fff;
+      color: #444;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .secondary-btn:hover {
+      background: #f0f0f0;
+    }
+    .estimate-list {
+      margin-top: 16px;
+      border-top: 1px solid #e2e5e9;
+      padding-top: 14px;
+    }
+    .estimate-item {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid #eceef1;
+      font-size: 0.95rem;
+    }
+    .estimate-item-info {
+      flex: 1;
+      min-width: 200px;
+    }
+    .estimate-item-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .estimate-item-actions input {
+      width: 65px;
+      padding: 4px 8px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      text-align: center;
+    }
+    .remove-btn {
+      background: none;
+      border: none;
+      color: #b00020;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 2px 6px;
+    }
+    .estimate-summary {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-top: 14px;
+      padding-top: 10px;
+    }
+    .total-box {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #111;
+    }
+    .bf-result-box {
+      margin-top: 14px;
+      padding: 12px 14px;
+      background: #fff;
+      border: 1px solid #e2e5e9;
+      border-radius: 6px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      font-size: 0.98rem;
+    }
+
+    /* Filter & Search Controls */
     .controls {
       display: flex;
       flex-wrap: wrap;
@@ -67,6 +238,11 @@
     .search-box:focus {
       outline: none;
       border-color: #111;
+    }
+
+    /* Table */
+    #prices-container {
+      overflow-x: auto;
     }
     table {
       width: 100%;
@@ -128,6 +304,65 @@
   <h1>BoardfootIndex</h1>
   <p class="subtitle">Automated outbuilding, workshop, and lumber price tracking engine coming online.</p>
 
+  <!-- Project & Board-Foot Estimator -->
+  <section class="estimator-card" aria-label="Project and Board-Foot Estimator">
+    <div class="estimator-header">
+      <h2>Project &amp; Board-Foot Estimator</h2>
+      <div class="estimator-tabs">
+        <button type="button" class="tab-btn active" id="tab-project">Material Takeoff</button>
+        <button type="button" class="tab-btn" id="tab-bf">Board-Foot Calculator</button>
+      </div>
+    </div>
+
+    <!-- Mode 1: Project Material Takeoff -->
+    <div id="panel-project">
+      <div class="estimator-row">
+        <div class="field-group grow">
+          <label for="material-select">Select Material from Index</label>
+          <select id="material-select">
+            <option value="">Loading materials...</option>
+          </select>
+        </div>
+        <div class="field-group small">
+          <label for="material-qty">Quantity</label>
+          <input type="number" id="material-qty" min="1" step="1" value="1" />
+        </div>
+        <button type="button" class="primary-btn" id="add-to-estimate-btn">+ Add to Estimate</button>
+      </div>
+
+      <div id="estimate-list-wrapper"></div>
+    </div>
+
+    <!-- Mode 2: Standalone Board-Foot Calculator -->
+    <div id="panel-bf" style="display: none;">
+      <div class="estimator-row">
+        <div class="field-group small">
+          <label for="bf-thickness">Thickness (in)</label>
+          <input type="number" id="bf-thickness" min="0.25" step="0.25" value="1" />
+        </div>
+        <div class="field-group small">
+          <label for="bf-width">Width (in)</label>
+          <input type="number" id="bf-width" min="0.5" step="0.5" value="6" />
+        </div>
+        <div class="field-group small">
+          <label for="bf-length">Length (ft)</label>
+          <input type="number" id="bf-length" min="1" step="1" value="8" />
+        </div>
+        <div class="field-group small">
+          <label for="bf-qty">Pieces</label>
+          <input type="number" id="bf-qty" min="1" step="1" value="1" />
+        </div>
+        <div class="field-group small">
+          <label for="bf-rate">$/BF (optional)</label>
+          <input type="number" id="bf-rate" min="0" step="0.01" value="5.34" />
+        </div>
+      </div>
+
+      <div class="bf-result-box" id="bf-result-box"></div>
+    </div>
+  </section>
+
+  <!-- Filter & Search Controls -->
   <div class="controls">
     <div class="filter-buttons" id="filter-buttons">
       <button type="button" class="filter-btn active" data-category="All">All</button>
@@ -174,6 +409,10 @@
     let sortKey = null;
     let sortDirection = 'asc';
 
+    // Estimator state
+    let estimateItems = [];
+    let wastePercent = 0;
+
     function formatPrice(val) {
       if (val === null || val === undefined || val === '') return '—';
       return `$${Number(val).toFixed(2)}`;
@@ -198,6 +437,172 @@
       return item.source_name ?? '—';
     }
 
+    /* ---------------- Estimator Logic ---------------- */
+    function populateEstimatorDropdown() {
+      const select = document.getElementById('material-select');
+      if (!allPrices.length) {
+        select.innerHTML = '<option value="">No materials available</option>';
+        return;
+      }
+
+      const sortedForDropdown = [...allPrices].sort((a, b) =>
+        (a.material_name || '').localeCompare(b.material_name || '')
+      );
+
+      select.innerHTML = sortedForDropdown.map((item, idx) => {
+        const priceText = item.unit_price != null ? `$${Number(item.unit_price).toFixed(2)}` : 'N/A';
+        return `<option value="${item.id ?? idx}">${item.material_name} (${item.dimensions || ''}) — ${priceText}</option>`;
+      }).join('');
+    }
+
+    function renderEstimateList() {
+      const wrapper = document.getElementById('estimate-list-wrapper');
+      if (estimateItems.length === 0) {
+        wrapper.innerHTML = '<p style="font-size: 0.9rem; color: #666; margin: 12px 0 0;">Select any framing, sheathing, trim, or cabinet item above to build a quick material estimate.</p>';
+        return;
+      }
+
+      let subtotal = 0;
+      const itemsHtml = estimateItems.map((entry, idx) => {
+        const unit = Number(entry.item.unit_price || 0);
+        const lineTotal = unit * entry.qty;
+        subtotal += lineTotal;
+
+        return `
+          <div class="estimate-item">
+            <div class="estimate-item-info">
+              <strong>${entry.item.material_name}</strong>
+              <span style="color: #666;">(${entry.item.dimensions || '—'}) · ${formatPrice(unit)} ${entry.item.unit_label || ''}</span>
+            </div>
+            <div class="estimate-item-actions">
+              <label style="font-size: 0.85rem; color: #555;">Qty:</label>
+              <input type="number" min="1" step="1" value="${entry.qty}" data-est-idx="${idx}" class="est-qty-input" />
+              <strong style="min-width: 75px; text-align: right;">${formatPrice(lineTotal)}</strong>
+              <button type="button" class="remove-btn" data-remove-idx="${idx}" title="Remove item">×</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      const totalWithWaste = subtotal * (1 + wastePercent / 100);
+
+      wrapper.innerHTML = `
+        <div class="estimate-list">
+          ${itemsHtml}
+          <div class="estimate-summary">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <label for="waste-select" style="font-size: 0.9rem; color: #555;">Waste Factor:</label>
+              <select id="waste-select" style="padding: 5px 8px; border: 1px solid #ccc; border-radius: 5px;">
+                <option value="0" ${wastePercent === 0 ? 'selected' : ''}>0% (Exact)</option>
+                <option value="10" ${wastePercent === 10 ? 'selected' : ''}>+10% (Standard)</option>
+                <option value="15" ${wastePercent === 15 ? 'selected' : ''}>+15% (Complex cuts)</option>
+              </select>
+              <button type="button" class="secondary-btn" id="clear-estimate-btn">Clear All</button>
+            </div>
+            <div class="total-box">
+              Estimated Total: ${formatPrice(totalWithWaste)}
+              ${wastePercent > 0 ? `<small style="font-weight: 400; color: #666; font-size: 0.85rem;">(Subtotal ${formatPrice(subtotal)})</small>` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+
+      wrapper.querySelectorAll('.est-qty-input').forEach(input => {
+        input.addEventListener('change', e => {
+          const i = Number(e.target.dataset.estIdx);
+          const val = Math.max(1, parseInt(e.target.value, 10) || 1);
+          estimateItems[i].qty = val;
+          renderEstimateList();
+        });
+      });
+
+      wrapper.querySelectorAll('.remove-btn').forEach(btn => {
+        btn.addEventListener('click', e => {
+          const i = Number(e.target.dataset.removeIdx);
+          estimateItems.splice(i, 1);
+          renderEstimateList();
+        });
+      });
+
+      document.getElementById('waste-select').addEventListener('change', e => {
+        wastePercent = Number(e.target.value);
+        renderEstimateList();
+      });
+
+      document.getElementById('clear-estimate-btn').addEventListener('click', () => {
+        estimateItems = [];
+        renderEstimateList();
+      });
+    }
+
+    function updateBoardFootCalc() {
+      const t = parseFloat(document.getElementById('bf-thickness').value) || 0;
+      const w = parseFloat(document.getElementById('bf-width').value) || 0;
+      const l = parseFloat(document.getElementById('bf-length').value) || 0;
+      const qty = parseInt(document.getElementById('bf-qty').value, 10) || 0;
+      const rate = parseFloat(document.getElementById('bf-rate').value) || 0;
+
+      const bfPerPiece = (t * w * l) / 12;
+      const totalBf = bfPerPiece * qty;
+      const estCost = totalBf * rate;
+
+      document.getElementById('bf-result-box').innerHTML = `
+        <div><strong>Per Piece:</strong> ${bfPerPiece.toFixed(2)} BF</div>
+        <div><strong>Total Board Feet:</strong> ${totalBf.toFixed(2)} BF</div>
+        ${rate > 0 ? `<div><strong>Estimated Cost:</strong> ${formatPrice(estCost)}</div>` : ''}
+      `;
+    }
+
+    function setupEstimator() {
+      const tabProject = document.getElementById('tab-project');
+      const tabBf = document.getElementById('tab-bf');
+      const panelProject = document.getElementById('panel-project');
+      const panelBf = document.getElementById('panel-bf');
+
+      tabProject.addEventListener('click', () => {
+        tabProject.classList.add('active');
+        tabBf.classList.remove('active');
+        panelProject.style.display = 'block';
+        panelBf.style.display = 'none';
+      });
+
+      tabBf.addEventListener('click', () => {
+        tabBf.classList.add('active');
+        tabProject.classList.remove('active');
+        panelBf.style.display = 'block';
+        panelProject.style.display = 'none';
+        updateBoardFootCalc();
+      });
+
+      document.getElementById('add-to-estimate-btn').addEventListener('click', () => {
+        const select = document.getElementById('material-select');
+        const qtyInput = document.getElementById('material-qty');
+        const selectedVal = select.value;
+        const qty = Math.max(1, parseInt(qtyInput.value, 10) || 1);
+
+        const matchedItem = allPrices.find((item, idx) => String(item.id ?? idx) === String(selectedVal));
+        if (!matchedItem) return;
+
+        const existing = estimateItems.find(e => e.item === matchedItem);
+        if (existing) {
+          existing.qty += qty;
+        } else {
+          estimateItems.push({ item: matchedItem, qty });
+        }
+
+        qtyInput.value = 1;
+        renderEstimateList();
+      });
+
+      ['bf-thickness', 'bf-width', 'bf-length', 'bf-qty', 'bf-rate'].forEach(id => {
+        document.getElementById(id).addEventListener('input', updateBoardFootCalc);
+      });
+
+      renderEstimateList();
+      updateBoardFootCalc();
+    }
+
+    /* ---------------- Table Sorting & Filtering ---------------- */
     function compareItems(a, b) {
       if (!sortKey) return 0;
 
@@ -345,9 +750,11 @@
       }
 
       allPrices = data || [];
+      populateEstimatorDropdown();
       renderTable();
     }
 
+    setupEstimator();
     setupControls();
     loadPrices();
   </script>
