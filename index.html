@@ -5,6 +5,8 @@
   <title>BoardfootIndex | Lumber & Workshop Cost Index</title>
   <link rel="icon" type="image/png" href="/logo-icon.png" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -21,7 +23,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      margin-bottom: 30px;
+      margin-bottom: 28px;
     }
     .brand-logo {
       max-height: clamp(72px, 11vw, 112px);
@@ -49,6 +51,133 @@
     }
     .print-meta {
       display: none;
+    }
+
+    /* Regional Map & State Bar */
+    .regional-card {
+      background-color: #fff;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 24px;
+      text-align: left;
+    }
+    .regional-header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .regional-title-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+    .regional-title-group h2 {
+      font-size: 1.1rem;
+      margin: 0;
+      color: #111;
+    }
+    .region-pill {
+      display: inline-block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #fff3e6;
+      color: #c2410c;
+      border: 1px solid #fdba74;
+    }
+    .regional-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    .state-select {
+      padding: 7px 11px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 0.92rem;
+      background: #fff;
+      color: #222;
+      font-weight: 500;
+    }
+    .map-wrapper {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid #eee;
+      position: relative;
+    }
+    .map-legend {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.82rem;
+      color: #666;
+      margin-bottom: 8px;
+    }
+    .legend-items {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      align-items: center;
+    }
+    .legend-swatch {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      margin-right: 5px;
+      vertical-align: middle;
+      border: 1px solid #cbd5e1;
+    }
+    #us-map-container {
+      width: 100%;
+      max-width: 780px;
+      margin: 0 auto;
+    }
+    #us-map-container svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    .state-path {
+      fill: #e5e7eb;
+      stroke: #ffffff;
+      stroke-width: 1.1;
+      cursor: pointer;
+      transition: fill 0.15s ease;
+    }
+    .state-path.has-data {
+      fill: #fed7aa;
+    }
+    .state-path:hover {
+      fill: #fb923c;
+    }
+    .state-path.selected {
+      fill: #ea580c;
+      stroke: #111;
+      stroke-width: 1.6;
+    }
+    .map-tooltip {
+      position: fixed;
+      pointer-events: none;
+      background: #111;
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.1s ease;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
     }
 
     /* Estimator Card */
@@ -143,7 +272,7 @@
       background: #2b2b2b;
     }
     .secondary-btn {
-      padding: 6px 11px;
+      padding: 7px 11px;
       background: #fff;
       color: #222;
       border: 1px solid #ccc;
@@ -224,6 +353,29 @@
       margin-left: 6px;
       vertical-align: middle;
     }
+    .badge-state {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      background: #fff3e6;
+      color: #c2410c;
+      border: 1px solid #fdba74;
+      padding: 1px 6px;
+      border-radius: 4px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .badge-baseline {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      background: #f3f4f6;
+      color: #4b5563;
+      padding: 1px 6px;
+      border-radius: 4px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
     .estimate-item-actions {
       display: flex;
       align-items: center;
@@ -267,7 +419,7 @@
       justify-content: space-between;
       align-items: center;
       gap: 14px;
-      margin-bottom: 20px;
+      margin-bottom: 14px;
       text-align: left;
     }
     .filter-buttons {
@@ -294,6 +446,13 @@
       border-color: #111;
       font-weight: 600;
     }
+    .search-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
     .search-box {
       padding: 9px 14px;
       border: 1px solid #ccc;
@@ -306,6 +465,16 @@
     .search-box:focus {
       outline: none;
       border-color: #111;
+    }
+    .fallback-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.88rem;
+      color: #444;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
     }
 
     /* Table */
@@ -383,6 +552,7 @@
         margin-bottom: 6px;
       }
       p.subtitle,
+      .regional-card,
       .estimator-tabs,
       #panel-catalog,
       #panel-bf,
@@ -390,6 +560,7 @@
       .remove-btn,
       #clear-estimate-btn,
       .controls,
+      .search-row,
       #result-count,
       #prices-container {
         display: none !important;
@@ -423,6 +594,8 @@
   </style>
 </head>
 <body>
+  <div class="map-tooltip" id="map-tooltip"></div>
+
   <header class="brand-header">
     <h1 class="sr-only">BoardfootIndex</h1>
     <img src="/logo-horizontal.png" alt="Boardfootindex.com" class="brand-logo" />
@@ -430,10 +603,40 @@
   </header>
   <p class="print-meta" id="print-meta"></p>
 
+  <!-- Regional State Selector & Interactive US Map -->
+  <section class="regional-card" aria-label="Regional Lumber Pricing Map">
+    <div class="regional-header">
+      <div class="regional-title-group">
+        <h2>Regional Pricing</h2>
+        <span class="region-pill" id="active-region-badge">US — National Baseline</span>
+      </div>
+      <div class="regional-controls">
+        <label for="global-state-select" class="sr-only">Select State</label>
+        <select id="global-state-select" class="state-select"></select>
+        <button type="button" class="secondary-btn" id="reset-region-btn" style="display: none;">Reset to US</button>
+        <button type="button" class="secondary-btn" id="toggle-map-btn">Hide Map</button>
+      </div>
+    </div>
+
+    <div class="map-wrapper" id="map-wrapper">
+      <div class="map-legend">
+        <span>Click any state on the map to load regional lumber prices into the estimator & table:</span>
+        <div class="legend-items">
+          <span><span class="legend-swatch" style="background: #ea580c; border-color: #111;"></span>Selected</span>
+          <span><span class="legend-swatch" style="background: #fed7aa;"></span>Regional Data Live</span>
+          <span><span class="legend-swatch" style="background: #e5e7eb;"></span>US Baseline</span>
+        </div>
+      </div>
+      <div id="us-map-container">
+        <p class="status" style="margin: 12px 0; text-align: center;">Loading interactive US map...</p>
+      </div>
+    </div>
+  </section>
+
   <!-- Unified Project & Board-Foot Estimator -->
   <section class="estimator-card" aria-label="Project and Board-Foot Estimator">
     <div class="estimator-header">
-      <h2>Project &amp; Board-Foot Estimator</h2>
+      <h2>Project & Board-Foot Estimator</h2>
       <div class="estimator-tabs">
         <button type="button" class="tab-btn active" id="tab-catalog">Index Materials (Per Piece / Sheet)</button>
         <button type="button" class="tab-btn" id="tab-bf">Custom / Rough Lumber (BF)</button>
@@ -443,6 +646,10 @@
     <!-- Mode 1: Add Standard Material from Index -->
     <div id="panel-catalog">
       <div class="estimator-row">
+        <div class="field-group med">
+          <label for="estimator-state-select">Pricing Region / State</label>
+          <select id="estimator-state-select"></select>
+        </div>
         <div class="field-group grow">
           <label for="material-select">Select Material from Index</label>
           <select id="material-select">
@@ -500,21 +707,28 @@
   <div class="controls">
     <div class="filter-buttons" id="filter-buttons">
       <button type="button" class="filter-btn active" data-category="All">All</button>
-      <button type="button" class="filter-btn" data-category="Framing & Posts">Framing &amp; Posts</button>
-      <button type="button" class="filter-btn" data-category="Headers & Beams">Headers &amp; Beams</button>
-      <button type="button" class="filter-btn" data-category="Sheathing & Subfloor">Sheathing &amp; Subfloor</button>
-      <button type="button" class="filter-btn" data-category="Trim & Paneling">Trim &amp; Paneling</button>
-      <button type="button" class="filter-btn" data-category="Cabinet Plywood & Sheet">Cabinet Plywood &amp; Sheet</button>
+      <button type="button" class="filter-btn" data-category="Framing & Posts">Framing & Posts</button>
+      <button type="button" class="filter-btn" data-category="Headers & Beams">Headers & Beams</button>
+      <button type="button" class="filter-btn" data-category="Sheathing & Subfloor">Sheathing & Subfloor</button>
+      <button type="button" class="filter-btn" data-category="Trim & Paneling">Trim & Paneling</button>
+      <button type="button" class="filter-btn" data-category="Cabinet Plywood & Sheet">Cabinet Plywood & Sheet</button>
       <button type="button" class="filter-btn" data-category="Hardwood Lumber">Hardwood Lumber</button>
     </div>
+  </div>
 
+  <div class="search-row">
+    <select id="table-state-select" class="state-select" aria-label="Filter table by state"></select>
     <input
       type="search"
       id="search-input"
       class="search-box"
-      placeholder="Search material, size, or store..."
+      placeholder="Search material, size, state (e.g. GA, OR), or store..."
       aria-label="Search lumber prices"
     />
+    <label class="fallback-toggle" id="fallback-toggle-wrapper" style="display: none;">
+      <input type="checkbox" id="include-baseline-checkbox" checked />
+      Include US baseline for unlocalized items
+    </label>
   </div>
 
   <div id="result-count" class="result-count"></div>
@@ -528,8 +742,67 @@
     const SUPABASE_ANON_KEY = 'sb_publishable_K66EHMpK9sulhGWaHdhPSQ_rm0AvcZG';
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+    const US_STATES = [
+      { code: 'US', name: 'National Baseline (All US)', fips: null },
+      { code: 'AL', name: 'Alabama', fips: '01' },
+      { code: 'AK', name: 'Alaska', fips: '02' },
+      { code: 'AZ', name: 'Arizona', fips: '04' },
+      { code: 'AR', name: 'Arkansas', fips: '05' },
+      { code: 'CA', name: 'California', fips: '06' },
+      { code: 'CO', name: 'Colorado', fips: '08' },
+      { code: 'CT', name: 'Connecticut', fips: '09' },
+      { code: 'DE', name: 'Delaware', fips: '10' },
+      { code: 'FL', name: 'Florida', fips: '12' },
+      { code: 'GA', name: 'Georgia', fips: '13' },
+      { code: 'HI', name: 'Hawaii', fips: '15' },
+      { code: 'ID', name: 'Idaho', fips: '16' },
+      { code: 'IL', name: 'Illinois', fips: '17' },
+      { code: 'IN', name: 'Indiana', fips: '18' },
+      { code: 'IA', name: 'Iowa', fips: '19' },
+      { code: 'KS', name: 'Kansas', fips: '20' },
+      { code: 'KY', name: 'Kentucky', fips: '21' },
+      { code: 'LA', name: 'Louisiana', fips: '22' },
+      { code: 'ME', name: 'Maine', fips: '23' },
+      { code: 'MD', name: 'Maryland', fips: '24' },
+      { code: 'MA', name: 'Massachusetts', fips: '25' },
+      { code: 'MI', name: 'Michigan', fips: '26' },
+      { code: 'MN', name: 'Minnesota', fips: '27' },
+      { code: 'MS', name: 'Mississippi', fips: '28' },
+      { code: 'MO', name: 'Missouri', fips: '29' },
+      { code: 'MT', name: 'Montana', fips: '30' },
+      { code: 'NE', name: 'Nebraska', fips: '31' },
+      { code: 'NV', name: 'Nevada', fips: '32' },
+      { code: 'NH', name: 'New Hampshire', fips: '33' },
+      { code: 'NJ', name: 'New Jersey', fips: '34' },
+      { code: 'NM', name: 'New Mexico', fips: '35' },
+      { code: 'NY', name: 'New York', fips: '36' },
+      { code: 'NC', name: 'North Carolina', fips: '37' },
+      { code: 'ND', name: 'North Dakota', fips: '38' },
+      { code: 'OH', name: 'Ohio', fips: '39' },
+      { code: 'OK', name: 'Oklahoma', fips: '40' },
+      { code: 'OR', name: 'Oregon', fips: '41' },
+      { code: 'PA', name: 'Pennsylvania', fips: '42' },
+      { code: 'RI', name: 'Rhode Island', fips: '44' },
+      { code: 'SC', name: 'South Carolina', fips: '45' },
+      { code: 'SD', name: 'South Dakota', fips: '46' },
+      { code: 'TN', name: 'Tennessee', fips: '47' },
+      { code: 'TX', name: 'Texas', fips: '48' },
+      { code: 'UT', name: 'Utah', fips: '49' },
+      { code: 'VT', name: 'Vermont', fips: '50' },
+      { code: 'VA', name: 'Virginia', fips: '51' },
+      { code: 'WA', name: 'Washington', fips: '53' },
+      { code: 'WV', name: 'West Virginia', fips: '54' },
+      { code: 'WI', name: 'Wisconsin', fips: '55' },
+      { code: 'WY', name: 'Wyoming', fips: '56' }
+    ];
+
+    const FIPS_TO_STATE = Object.fromEntries(
+      US_STATES.filter(s => s.fips).map(s => [s.fips, s])
+    );
+
     const COLUMNS = [
       { key: 'material_name', label: 'Material', type: 'text' },
+      { key: 'state', label: 'Region', type: 'text' },
       { key: 'category', label: 'Category', type: 'text' },
       { key: 'dimensions', label: 'Dimensions', type: 'text' },
       { key: 'price_per_board_foot', label: '$/BF', type: 'number' },
@@ -538,6 +811,8 @@
     ];
 
     let allPrices = [];
+    let selectedState = 'US';
+    let includeBaselineFallback = true;
     let activeCategory = 'All';
     let searchQuery = '';
     let sortKey = null;
@@ -546,6 +821,203 @@
     // Shared Takeoff List State
     let estimateItems = [];
     let wastePercent = 0;
+
+    function getStateName(code) {
+      const found = US_STATES.find(s => s.code === code);
+      return found ? found.name : code;
+    }
+
+    function normalizeMaterialKey(item) {
+      return `${(item.material_name || '').trim().toLowerCase()}||${(item.dimensions || '').trim().toLowerCase()}`;
+    }
+
+    /* Resolve items for a given state:
+       - If state === 'US', return US baseline rows (or all rows if no US rows exist)
+       - If a specific state is selected (e.g. 'GA'), prefer 'GA' rows and optionally fill remaining materials from 'US' */
+    function getResolvedItemsForState(stateCode, withFallback = true) {
+      const code = (stateCode || 'US').toUpperCase();
+      if (code === 'US') {
+        const usRows = allPrices.filter(i => (i.state || 'US').toUpperCase() === 'US');
+        return usRows.length ? usRows : allPrices;
+      }
+
+      const stateRows = allPrices.filter(i => (i.state || 'US').toUpperCase() === code);
+      if (!withFallback) {
+        return stateRows;
+      }
+
+      const stateMaterialKeys = new Set(stateRows.map(normalizeMaterialKey));
+      const baselineFallbackRows = allPrices.filter(i => {
+        const rowState = (i.state || 'US').toUpperCase();
+        return rowState === 'US' && !stateMaterialKeys.has(normalizeMaterialKey(i));
+      });
+
+      return [...stateRows, ...baselineFallbackRows];
+    }
+
+    function getStatesWithData() {
+      const counts = {};
+      allPrices.forEach(item => {
+        const st = (item.state || 'US').toUpperCase();
+        if (st !== 'US') {
+          counts[st] = (counts[st] || 0) + 1;
+        }
+      });
+      return counts;
+    }
+
+    function populateStateSelects() {
+      const dataCounts = getStatesWithData();
+      const optionsHtml = US_STATES.map(s => {
+        const count = dataCounts[s.code];
+        const tag = s.code === 'US'
+          ? ''
+          : count
+            ? ` (${count} regional)`
+            : ' (US baseline)';
+        return `<option value="${s.code}">${s.code === 'US' ? s.name : `${s.code} — ${s.name}${tag}`}</option>`;
+      }).join('');
+
+      ['global-state-select', 'estimator-state-select', 'table-state-select'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.innerHTML = optionsHtml;
+          el.value = selectedState;
+        }
+      });
+    }
+
+    function setActiveState(newCode) {
+      selectedState = (newCode || 'US').toUpperCase();
+
+      ['global-state-select', 'estimator-state-select', 'table-state-select'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = selectedState;
+      });
+
+      const badge = document.getElementById('active-region-badge');
+      const resetBtn = document.getElementById('reset-region-btn');
+      const fallbackWrapper = document.getElementById('fallback-toggle-wrapper');
+
+      if (selectedState === 'US') {
+        badge.textContent = 'US — National Baseline';
+        resetBtn.style.display = 'none';
+        fallbackWrapper.style.display = 'none';
+      } else {
+        const count = getStatesWithData()[selectedState] || 0;
+        badge.textContent = count > 0
+          ? `${selectedState} — ${getStateName(selectedState)} (${count} regional ${count === 1 ? 'price' : 'prices'})`
+          : `${selectedState} — ${getStateName(selectedState)} (Using US baseline)`;
+        resetBtn.style.display = 'inline-block';
+        fallbackWrapper.style.display = 'flex';
+      }
+
+      // Highlight selected state on SVG map
+      document.querySelectorAll('.state-path').forEach(path => {
+        path.classList.toggle('selected', path.dataset.stateCode === selectedState);
+      });
+
+      // Reprice any catalog items already inside the Takeoff list for the newly selected state
+      repriceTakeoffForState(selectedState);
+
+      populateEstimatorDropdown();
+      renderEstimateList();
+      renderTable();
+    }
+
+    function repriceTakeoffForState(stateCode) {
+      const resolvedPool = getResolvedItemsForState(stateCode, true);
+      const poolByKey = new Map(resolvedPool.map(item => [normalizeMaterialKey(item), item]));
+
+      estimateItems.forEach(entry => {
+        if (entry.isCustom || !entry.materialKey) return;
+        const match = poolByKey.get(entry.materialKey);
+        if (match) {
+          entry.unitPrice = Number(match.unit_price || 0);
+          entry.sourceName = match.source_name || entry.sourceName;
+          entry.appliedState = (match.state || 'US').toUpperCase();
+        }
+      });
+    }
+
+    /* ---------------- Interactive US Map (D3 + TopoJSON) ---------------- */
+    async function renderUSMap() {
+      const container = document.getElementById('us-map-container');
+      const tooltip = document.getElementById('map-tooltip');
+
+      try {
+        const res = await fetch('https://cdn.jsdelivr.net/npm/us-atlas@3/states-albers-10m.json');
+        const us = await res.json();
+        const states = topojson.feature(us, us.objects.states).features;
+        const stateMesh = topojson.mesh(us, us.objects.states, (a, b) => a !== b);
+        const dataCounts = getStatesWithData();
+
+        container.innerHTML = '';
+        const svg = d3.select(container)
+          .append('svg')
+          .attr('viewBox', '0 0 975 610')
+          .attr('role', 'img')
+          .attr('aria-label', 'Interactive United States map for selecting regional lumber prices');
+
+        const pathGen = d3.geoPath();
+
+        svg.append('g')
+          .selectAll('path')
+          .data(states)
+          .join('path')
+          .attr('d', pathGen)
+          .attr('class', d => {
+            const id = String(d.id).padStart(2, '0');
+            const st = FIPS_TO_STATE[id];
+            const classes = ['state-path'];
+            if (st && dataCounts[st.code]) classes.push('has-data');
+            if (st && st.code === selectedState) classes.push('selected');
+            return classes.join(' ');
+          })
+          .attr('data-state-code', d => {
+            const id = String(d.id).padStart(2, '0');
+            return FIPS_TO_STATE[id]?.code || '';
+          })
+          .on('mouseenter', function (event, d) {
+            const id = String(d.id).padStart(2, '0');
+            const st = FIPS_TO_STATE[id];
+            if (!st) return;
+            const count = dataCounts[st.code] || 0;
+            tooltip.textContent = count > 0
+              ? `${st.name} (${st.code}) · ${count} regional ${count === 1 ? 'price' : 'prices'}`
+              : `${st.name} (${st.code}) · US baseline pricing`;
+            tooltip.style.opacity = '1';
+          })
+          .on('mousemove', function (event) {
+            tooltip.style.left = `${event.clientX + 12}px`;
+            tooltip.style.top = `${event.clientY - 28}px`;
+          })
+          .on('mouseleave', function () {
+            tooltip.style.opacity = '0';
+          })
+          .on('click', function (event, d) {
+            const id = String(d.id).padStart(2, '0');
+            const st = FIPS_TO_STATE[id];
+            if (!st) return;
+            // Clicking the already-selected state toggles back to US baseline
+            if (selectedState === st.code) {
+              setActiveState('US');
+            } else {
+              setActiveState(st.code);
+            }
+          });
+
+        svg.append('path')
+          .datum(stateMesh)
+          .attr('fill', 'none')
+          .attr('stroke', '#ffffff')
+          .attr('stroke-linejoin', 'round')
+          .attr('d', pathGen);
+      } catch (err) {
+        console.error('Map load error:', err);
+        container.innerHTML = '<p class="status" style="margin: 10px 0;">Map unavailable offline — use the state dropdown above to select a region.</p>';
+      }
+    }
 
     function formatPrice(val) {
       if (val === null || val === undefined || val === '') return '—';
@@ -574,21 +1046,27 @@
     /* ---------------- Unified Estimator Logic ---------------- */
     function populateEstimatorDropdown() {
       const select = document.getElementById('material-select');
-      if (!allPrices.length) {
+      const resolvedItems = getResolvedItemsForState(selectedState, true);
+
+      if (!resolvedItems.length) {
         select.innerHTML = '<option value="">No materials available</option>';
         return;
       }
 
-      const sortedForDropdown = [...allPrices].sort((a, b) =>
+      const sortedForDropdown = [...resolvedItems].sort((a, b) =>
         (a.material_name || '').localeCompare(b.material_name || '')
       );
 
       select.innerHTML = sortedForDropdown.map((item, idx) => {
         const priceText = item.unit_price != null ? `$${Number(item.unit_price).toFixed(2)}` : 'N/A';
-        return `<option value="${item.id ?? idx}">${item.material_name} (${item.dimensions || ''}) — ${priceText}</option>`;
+        const rowState = (item.state || 'US').toUpperCase();
+        const regionTag = selectedState !== 'US' && rowState === selectedState
+          ? ` [${rowState}]`
+          : '';
+        return `<option value="${item.id ?? idx}">${item.material_name} (${item.dimensions || ''}) — ${priceText}${regionTag}</option>`;
       }).join('');
 
-      const hardwoodItem = allPrices.find(
+      const hardwoodItem = resolvedItems.find(
         i => (i.category || '').toLowerCase().includes('hardwood') && i.price_per_board_foot != null
       );
       if (hardwoodItem) {
@@ -638,14 +1116,15 @@
         if (entry.bfPerPiece) {
           totalCustomBf += entry.bfPerPiece * entry.qty;
         }
+        const regionPart = entry.appliedState ? ` (${entry.appliedState})` : '';
         const storePart = entry.sourceName ? ` [${entry.sourceName}]` : '';
-        return `${idx + 1}. ${entry.name} (${entry.dimensions || '—'}) — Qty: ${entry.qty} × ${formatPrice(entry.unitPrice)} = ${formatPrice(lineTotal)}${storePart}`;
+        return `${idx + 1}. ${entry.name} (${entry.dimensions || '—'}) — Qty: ${entry.qty} × ${formatPrice(entry.unitPrice)} = ${formatPrice(lineTotal)}${regionPart}${storePart}`;
       });
 
       const totalWithWaste = subtotal * (1 + wastePercent / 100);
 
       const summaryLines = [
-        `BoardfootIndex — Project Material Takeoff (${dateStr})`,
+        `BoardfootIndex — Project Material Takeoff (${getStateName(selectedState)} · ${dateStr})`,
         `--------------------------------------------------`,
         ...lines,
         `--------------------------------------------------`,
@@ -693,14 +1172,14 @@
         month: 'long',
         day: 'numeric'
       });
-      metaEl.textContent = `Project Material Takeoff · Printed ${dateStr} · boardfootindex.com`;
+      metaEl.textContent = `Project Material Takeoff · Region: ${getStateName(selectedState)} · Printed ${dateStr} · boardfootindex.com`;
       window.print();
     }
 
     function renderEstimateList() {
       const wrapper = document.getElementById('estimate-list-wrapper');
       if (estimateItems.length === 0) {
-        wrapper.innerHTML = '<p style="font-size: 0.9rem; color: #666; margin: 14px 0 0;">Add standard materials from the index or custom rough-sawn lumber by board foot to build a combined project takeoff.</p>';
+        wrapper.innerHTML = '<p style="font-size: 0.9rem; color: #666; margin: 14px 0 0;">Select your state/region above and add standard catalog items or custom rough-sawn lumber by board foot to build a combined project takeoff.</p>';
         return;
       }
 
@@ -715,6 +1194,11 @@
         }
 
         const customBadge = entry.isCustom ? '<span class="badge-custom">BF Calc</span>' : '';
+        const regionBadge = !entry.isCustom && entry.appliedState
+          ? (entry.appliedState !== 'US'
+              ? `<span class="badge-state">${entry.appliedState}</span>`
+              : `<span class="badge-baseline">US</span>`)
+          : '';
         const bfNote = entry.bfPerPiece
           ? ` · ${(entry.bfPerPiece * entry.qty).toFixed(2)} BF`
           : '';
@@ -723,7 +1207,7 @@
         return `
           <div class="estimate-item">
             <div class="estimate-item-info">
-              <strong>${entry.name}</strong>${customBadge}
+              <strong>${entry.name}</strong>${customBadge}${regionBadge}
               <div style="color: #666; font-size: 0.88rem; margin-top: 2px;">
                 ${entry.dimensions || '—'} · ${formatPrice(entry.unitPrice)} ${entry.unitLabel || ''}${bfNote}${storeNote}
               </div>
@@ -743,7 +1227,7 @@
       wrapper.innerHTML = `
         <div class="estimate-list">
           <div class="estimate-list-header">
-            <div class="estimate-list-title">Project Takeoff List (${estimateItems.length} ${estimateItems.length === 1 ? 'line' : 'lines'})</div>
+            <div class="estimate-list-title">Project Takeoff List — ${selectedState} (${estimateItems.length} ${estimateItems.length === 1 ? 'line' : 'lines'})</div>
             <div class="export-actions">
               <button type="button" class="secondary-btn" id="copy-takeoff-btn">Copy Takeoff</button>
               <button type="button" class="secondary-btn" id="print-takeoff-btn">Print / Save PDF</button>
@@ -761,7 +1245,7 @@
               <button type="button" class="secondary-btn" id="clear-estimate-btn">Clear All</button>
             </div>
             <div class="total-box">
-              Project Total: ${formatPrice(totalWithWaste)}
+              Project Total (${selectedState}): ${formatPrice(totalWithWaste)}
               ${wastePercent > 0 ? `<small style="font-weight: 400; color: #666; font-size: 0.85rem;">(Subtotal ${formatPrice(subtotal)})</small>` : ''}
               ${totalCustomBf > 0 ? `<div style="font-size: 0.82rem; font-weight: 500; color: #555; text-align: right;">Includes ${totalCustomBf.toFixed(2)} BF custom lumber</div>` : ''}
             </div>
@@ -832,21 +1316,27 @@
         const selectedVal = select.value;
         const qty = Math.max(1, parseInt(qtyInput.value, 10) || 1);
 
-        const matchedItem = allPrices.find((item, idx) => String(item.id ?? idx) === String(selectedVal));
+        const resolvedPool = getResolvedItemsForState(selectedState, true);
+        const matchedItem = resolvedPool.find((item, idx) => String(item.id ?? idx) === String(selectedVal));
         if (!matchedItem) return;
 
-        const key = `catalog-${matchedItem.id ?? matchedItem.material_name}-${matchedItem.dimensions}`;
+        const matKey = normalizeMaterialKey(matchedItem);
+        const key = `catalog-${matKey}`;
         const existing = estimateItems.find(e => e.key === key);
         if (existing) {
           existing.qty += qty;
+          existing.unitPrice = Number(matchedItem.unit_price || 0);
+          existing.appliedState = (matchedItem.state || 'US').toUpperCase();
         } else {
           estimateItems.push({
             key,
+            materialKey: matKey,
             name: matchedItem.material_name,
             dimensions: matchedItem.dimensions,
             unitPrice: Number(matchedItem.unit_price || 0),
             unitLabel: matchedItem.unit_label || 'each',
             sourceName: matchedItem.source_name || '',
+            appliedState: (matchedItem.state || 'US').toUpperCase(),
             qty,
             isCustom: false,
             bfPerPiece: null
@@ -870,11 +1360,13 @@
         } else {
           estimateItems.push({
             key,
+            materialKey: null,
             name: label,
             dimensions: dims,
             unitPrice: pricePerPiece,
             unitLabel: `(${bfPerPiece.toFixed(2)} BF/pc)`,
             sourceName: 'Custom BF',
+            appliedState: selectedState,
             qty,
             isCustom: true,
             bfPerPiece
@@ -936,7 +1428,9 @@
       const container = document.getElementById('prices-container');
       const countEl = document.getElementById('result-count');
 
-      const filtered = allPrices.filter(item => {
+      const statePool = getResolvedItemsForState(selectedState, includeBaselineFallback);
+
+      const filtered = statePool.filter(item => {
         const matchesCategory =
           activeCategory === 'All' || (item.category || '').trim() === activeCategory;
 
@@ -950,7 +1444,9 @@
             item.source_name,
             item.source_url,
             item.notes,
-            item.unit_label
+            item.unit_label,
+            item.state,
+            getStateName((item.state || 'US').toUpperCase())
           ]
             .filter(Boolean)
             .some(field => String(field).toLowerCase().includes(q));
@@ -960,10 +1456,11 @@
 
       const sorted = sortKey ? [...filtered].sort(compareItems) : filtered;
 
-      countEl.textContent = `Showing ${sorted.length} of ${allPrices.length} items`;
+      const regionLabel = selectedState === 'US' ? 'National Baseline' : getStateName(selectedState);
+      countEl.textContent = `Showing ${sorted.length} items for ${regionLabel} (${selectedState})`;
 
       if (sorted.length === 0) {
-        container.innerHTML = '<p class="status">No matching lumber items found.</p>';
+        container.innerHTML = `<p class="status">No matching lumber items found for ${regionLabel}. Try enabling "Include US baseline" or switching regions.</p>`;
         return;
       }
 
@@ -979,16 +1476,24 @@
         `;
       }).join('');
 
-      const rowsHtml = sorted.map(item => `
-        <tr>
-          <td><strong>${item.material_name ?? ''}</strong></td>
-          <td>${item.category ?? '—'}</td>
-          <td>${item.dimensions ?? '—'}</td>
-          <td>${formatPrice(item.price_per_board_foot)}</td>
-          <td>${formatPrice(item.unit_price)} ${item.unit_label ? `<small>(${item.unit_label})</small>` : ''}</td>
-          <td>${renderSourceCell(item)}</td>
-        </tr>
-      `).join('');
+      const rowsHtml = sorted.map(item => {
+        const st = (item.state || 'US').toUpperCase();
+        const statePill = st !== 'US'
+          ? `<span class="badge-state" style="margin-left: 0;">${st}</span>`
+          : `<span class="badge-baseline" style="margin-left: 0;">US</span>`;
+
+        return `
+          <tr>
+            <td><strong>${item.material_name ?? ''}</strong></td>
+            <td>${statePill}</td>
+            <td>${item.category ?? '—'}</td>
+            <td>${item.dimensions ?? '—'}</td>
+            <td>${formatPrice(item.price_per_board_foot)}</td>
+            <td>${formatPrice(item.unit_price)} ${item.unit_label ? `<small>(${item.unit_label})</small>` : ''}</td>
+            <td>${renderSourceCell(item)}</td>
+          </tr>
+        `;
+      }).join('');
 
       container.innerHTML = `
         <table>
@@ -1024,6 +1529,29 @@
         searchQuery = e.target.value;
         renderTable();
       });
+
+      ['global-state-select', 'estimator-state-select', 'table-state-select'].forEach(id => {
+        document.getElementById(id).addEventListener('change', e => {
+          setActiveState(e.target.value);
+        });
+      });
+
+      document.getElementById('reset-region-btn').addEventListener('click', () => {
+        setActiveState('US');
+      });
+
+      document.getElementById('include-baseline-checkbox').addEventListener('change', e => {
+        includeBaselineFallback = e.target.checked;
+        renderTable();
+      });
+
+      const toggleMapBtn = document.getElementById('toggle-map-btn');
+      const mapWrapper = document.getElementById('map-wrapper');
+      toggleMapBtn.addEventListener('click', () => {
+        const isHidden = mapWrapper.style.display === 'none';
+        mapWrapper.style.display = isHidden ? 'block' : 'none';
+        toggleMapBtn.textContent = isHidden ? 'Hide Map' : 'Show Map';
+      });
     }
 
     async function loadPrices() {
@@ -1040,10 +1568,12 @@
       }
 
       allPrices = data || [];
-      populateEstimatorDropdown();
-      renderTable();
+      populateStateSelects();
+      await renderUSMap();
+      setActiveState('US');
     }
 
+    populateStateSelects();
     setupEstimator();
     setupControls();
     loadPrices();
