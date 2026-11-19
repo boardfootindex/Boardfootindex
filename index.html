@@ -53,7 +53,7 @@
       display: none;
     }
 
-    /* Regional Map & State Bar */
+    /* Regional Map & Region Bar */
     .regional-card {
       background-color: #fff;
       border: 1px solid #ddd;
@@ -96,7 +96,7 @@
       align-items: center;
       gap: 8px;
     }
-    .state-select {
+    .region-select {
       padding: 7px 11px;
       border: 1px solid #ccc;
       border-radius: 6px;
@@ -104,6 +104,33 @@
       background: #fff;
       color: #222;
       font-weight: 500;
+    }
+    .region-quick-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 12px;
+    }
+    .region-chip {
+      padding: 5px 10px;
+      border: 1px solid #d1d5db;
+      background: #f9fafb;
+      color: #222;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .region-chip:hover {
+      background: #ffedd5;
+      border-color: #fb923c;
+    }
+    .region-chip.active {
+      background: #ea580c;
+      color: #fff;
+      border-color: #ea580c;
+      font-weight: 600;
     }
     .map-wrapper {
       margin-top: 14px;
@@ -149,20 +176,25 @@
     .state-path {
       fill: #e5e7eb;
       stroke: #ffffff;
-      stroke-width: 1.1;
+      stroke-width: 0.9;
       cursor: pointer;
       transition: fill 0.15s ease;
     }
     .state-path.has-data {
       fill: #fed7aa;
     }
-    .state-path:hover {
+    .state-path.region-hover {
       fill: #fb923c;
     }
     .state-path.selected {
       fill: #ea580c;
-      stroke: #111;
-      stroke-width: 1.6;
+    }
+    .region-boundary {
+      fill: none;
+      stroke: #374151;
+      stroke-width: 1.4;
+      stroke-linejoin: round;
+      pointer-events: none;
     }
     .map-tooltip {
       position: fixed;
@@ -252,7 +284,7 @@
       min-width: 220px;
     }
     .field-group.med {
-      width: 165px;
+      width: 185px;
     }
     .field-group.small {
       width: 98px;
@@ -353,7 +385,7 @@
       margin-left: 6px;
       vertical-align: middle;
     }
-    .badge-state {
+    .badge-region {
       display: inline-block;
       font-size: 0.72rem;
       font-weight: 700;
@@ -603,7 +635,7 @@
   </header>
   <p class="print-meta" id="print-meta"></p>
 
-  <!-- Regional State Selector & Interactive US Map -->
+  <!-- Regional Selector & Interactive US Region Map -->
   <section class="regional-card" aria-label="Regional Lumber Pricing Map">
     <div class="regional-header">
       <div class="regional-title-group">
@@ -611,24 +643,26 @@
         <span class="region-pill" id="active-region-badge">US — National Baseline</span>
       </div>
       <div class="regional-controls">
-        <label for="global-state-select" class="sr-only">Select State</label>
-        <select id="global-state-select" class="state-select"></select>
+        <label for="global-region-select" class="sr-only">Select Region</label>
+        <select id="global-region-select" class="region-select"></select>
         <button type="button" class="secondary-btn" id="reset-region-btn" style="display: none;">Reset to US</button>
         <button type="button" class="secondary-btn" id="toggle-map-btn">Hide Map</button>
       </div>
     </div>
 
+    <div class="region-quick-pills" id="region-quick-pills"></div>
+
     <div class="map-wrapper" id="map-wrapper">
       <div class="map-legend">
-        <span>Click any state on the map to load regional lumber prices into the estimator & table:</span>
+        <span>Click any region on the map to load regional lumber prices into the estimator & table:</span>
         <div class="legend-items">
-          <span><span class="legend-swatch" style="background: #ea580c; border-color: #111;"></span>Selected</span>
+          <span><span class="legend-swatch" style="background: #ea580c; border-color: #111;"></span>Selected Region</span>
           <span><span class="legend-swatch" style="background: #fed7aa;"></span>Regional Data Live</span>
           <span><span class="legend-swatch" style="background: #e5e7eb;"></span>US Baseline</span>
         </div>
       </div>
       <div id="us-map-container">
-        <p class="status" style="margin: 12px 0; text-align: center;">Loading interactive US map...</p>
+        <p class="status" style="margin: 12px 0; text-align: center;">Loading interactive US regional map...</p>
       </div>
     </div>
   </section>
@@ -647,8 +681,8 @@
     <div id="panel-catalog">
       <div class="estimator-row">
         <div class="field-group med">
-          <label for="estimator-state-select">Pricing Region / State</label>
-          <select id="estimator-state-select"></select>
+          <label for="estimator-region-select">Pricing Region</label>
+          <select id="estimator-region-select"></select>
         </div>
         <div class="field-group grow">
           <label for="material-select">Select Material from Index</label>
@@ -717,12 +751,12 @@
   </div>
 
   <div class="search-row">
-    <select id="table-state-select" class="state-select" aria-label="Filter table by state"></select>
+    <select id="table-region-select" class="region-select" aria-label="Filter table by region"></select>
     <input
       type="search"
       id="search-input"
       class="search-box"
-      placeholder="Search material, size, state (e.g. GA, OR), or store..."
+      placeholder="Search material, size, region (e.g. Northeast, SE, PC), or store..."
       aria-label="Search lumber prices"
     />
     <label class="fallback-toggle" id="fallback-toggle-wrapper" style="display: none;">
@@ -742,63 +776,57 @@
     const SUPABASE_ANON_KEY = 'sb_publishable_K66EHMpK9sulhGWaHdhPSQ_rm0AvcZG';
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    const US_STATES = [
-      { code: 'US', name: 'National Baseline (All US)', fips: null },
-      { code: 'AL', name: 'Alabama', fips: '01' },
-      { code: 'AK', name: 'Alaska', fips: '02' },
-      { code: 'AZ', name: 'Arizona', fips: '04' },
-      { code: 'AR', name: 'Arkansas', fips: '05' },
-      { code: 'CA', name: 'California', fips: '06' },
-      { code: 'CO', name: 'Colorado', fips: '08' },
-      { code: 'CT', name: 'Connecticut', fips: '09' },
-      { code: 'DE', name: 'Delaware', fips: '10' },
-      { code: 'FL', name: 'Florida', fips: '12' },
-      { code: 'GA', name: 'Georgia', fips: '13' },
-      { code: 'HI', name: 'Hawaii', fips: '15' },
-      { code: 'ID', name: 'Idaho', fips: '16' },
-      { code: 'IL', name: 'Illinois', fips: '17' },
-      { code: 'IN', name: 'Indiana', fips: '18' },
-      { code: 'IA', name: 'Iowa', fips: '19' },
-      { code: 'KS', name: 'Kansas', fips: '20' },
-      { code: 'KY', name: 'Kentucky', fips: '21' },
-      { code: 'LA', name: 'Louisiana', fips: '22' },
-      { code: 'ME', name: 'Maine', fips: '23' },
-      { code: 'MD', name: 'Maryland', fips: '24' },
-      { code: 'MA', name: 'Massachusetts', fips: '25' },
-      { code: 'MI', name: 'Michigan', fips: '26' },
-      { code: 'MN', name: 'Minnesota', fips: '27' },
-      { code: 'MS', name: 'Mississippi', fips: '28' },
-      { code: 'MO', name: 'Missouri', fips: '29' },
-      { code: 'MT', name: 'Montana', fips: '30' },
-      { code: 'NE', name: 'Nebraska', fips: '31' },
-      { code: 'NV', name: 'Nevada', fips: '32' },
-      { code: 'NH', name: 'New Hampshire', fips: '33' },
-      { code: 'NJ', name: 'New Jersey', fips: '34' },
-      { code: 'NM', name: 'New Mexico', fips: '35' },
-      { code: 'NY', name: 'New York', fips: '36' },
-      { code: 'NC', name: 'North Carolina', fips: '37' },
-      { code: 'ND', name: 'North Dakota', fips: '38' },
-      { code: 'OH', name: 'Ohio', fips: '39' },
-      { code: 'OK', name: 'Oklahoma', fips: '40' },
-      { code: 'OR', name: 'Oregon', fips: '41' },
-      { code: 'PA', name: 'Pennsylvania', fips: '42' },
-      { code: 'RI', name: 'Rhode Island', fips: '44' },
-      { code: 'SC', name: 'South Carolina', fips: '45' },
-      { code: 'SD', name: 'South Dakota', fips: '46' },
-      { code: 'TN', name: 'Tennessee', fips: '47' },
-      { code: 'TX', name: 'Texas', fips: '48' },
-      { code: 'UT', name: 'Utah', fips: '49' },
-      { code: 'VT', name: 'Vermont', fips: '50' },
-      { code: 'VA', name: 'Virginia', fips: '51' },
-      { code: 'WA', name: 'Washington', fips: '53' },
-      { code: 'WV', name: 'West Virginia', fips: '54' },
-      { code: 'WI', name: 'Wisconsin', fips: '55' },
-      { code: 'WY', name: 'Wyoming', fips: '56' }
+    const US_REGIONS = [
+      {
+        code: 'US',
+        name: 'National Baseline',
+        statesLabel: 'All Regions',
+        fips: []
+      },
+      {
+        code: 'NE',
+        name: 'Northeast',
+        statesLabel: 'CT, DE, MA, MD, ME, NH, NJ, NY, PA, RI, VT',
+        fips: ['09', '10', '11', '23', '24', '25', '33', '34', '36', '42', '44', '50']
+      },
+      {
+        code: 'SE',
+        name: 'Southeast',
+        statesLabel: 'AL, FL, GA, KY, MS, NC, SC, TN, VA, WV',
+        fips: ['01', '12', '13', '21', '28', '37', '45', '47', '51', '54']
+      },
+      {
+        code: 'MW',
+        name: 'Midwest',
+        statesLabel: 'IA, IL, IN, MI, MN, MO, ND, NE, OH, SD, WI',
+        fips: ['17', '18', '19', '26', '27', '29', '31', '38', '39', '46', '55']
+      },
+      {
+        code: 'SC',
+        name: 'South Central',
+        statesLabel: 'AR, LA, OK, TX',
+        fips: ['05', '22', '40', '48']
+      },
+      {
+        code: 'MT',
+        name: 'Mountain',
+        statesLabel: 'AZ, CO, ID, MT, NM, NV, UT, WY',
+        fips: ['04', '08', '16', '30', '32', '35', '49', '56']
+      },
+      {
+        code: 'PC',
+        name: 'Pacific',
+        statesLabel: 'AK, CA, HI, OR, WA',
+        fips: ['02', '06', '15', '41', '53']
+      }
     ];
 
-    const FIPS_TO_STATE = Object.fromEntries(
-      US_STATES.filter(s => s.fips).map(s => [s.fips, s])
-    );
+    const FIPS_TO_REGION = {};
+    US_REGIONS.forEach(reg => {
+      reg.fips.forEach(f => {
+        FIPS_TO_REGION[f] = reg;
+      });
+    });
 
     const COLUMNS = [
       { key: 'material_name', label: 'Material', type: 'text' },
@@ -811,7 +839,7 @@
     ];
 
     let allPrices = [];
-    let selectedState = 'US';
+    let selectedRegion = 'US';
     let includeBaselineFallback = true;
     let activeCategory = 'All';
     let searchQuery = '';
@@ -822,111 +850,125 @@
     let estimateItems = [];
     let wastePercent = 0;
 
-    function getStateName(code) {
-      const found = US_STATES.find(s => s.code === code);
-      return found ? found.name : code;
+    function getRegionInfo(code) {
+      return US_REGIONS.find(r => r.code === code) || US_REGIONS[0];
     }
 
     function normalizeMaterialKey(item) {
       return `${(item.material_name || '').trim().toLowerCase()}||${(item.dimensions || '').trim().toLowerCase()}`;
     }
 
-    /* Resolve items for a given state:
-       - If state === 'US', return US baseline rows (or all rows if no US rows exist)
-       - If a specific state is selected (e.g. 'GA'), prefer 'GA' rows and optionally fill remaining materials from 'US' */
-    function getResolvedItemsForState(stateCode, withFallback = true) {
-      const code = (stateCode || 'US').toUpperCase();
+    function getResolvedItemsForRegion(regionCode, withFallback = true) {
+      const code = (regionCode || 'US').toUpperCase();
       if (code === 'US') {
         const usRows = allPrices.filter(i => (i.state || 'US').toUpperCase() === 'US');
         return usRows.length ? usRows : allPrices;
       }
 
-      const stateRows = allPrices.filter(i => (i.state || 'US').toUpperCase() === code);
+      const regionRows = allPrices.filter(i => (i.state || 'US').toUpperCase() === code);
       if (!withFallback) {
-        return stateRows;
+        return regionRows;
       }
 
-      const stateMaterialKeys = new Set(stateRows.map(normalizeMaterialKey));
+      const regionMaterialKeys = new Set(regionRows.map(normalizeMaterialKey));
       const baselineFallbackRows = allPrices.filter(i => {
-        const rowState = (i.state || 'US').toUpperCase();
-        return rowState === 'US' && !stateMaterialKeys.has(normalizeMaterialKey(i));
+        const rowReg = (i.state || 'US').toUpperCase();
+        return rowReg === 'US' && !regionMaterialKeys.has(normalizeMaterialKey(i));
       });
 
-      return [...stateRows, ...baselineFallbackRows];
+      return [...regionRows, ...baselineFallbackRows];
     }
 
-    function getStatesWithData() {
+    function getRegionsWithData() {
       const counts = {};
       allPrices.forEach(item => {
-        const st = (item.state || 'US').toUpperCase();
-        if (st !== 'US') {
-          counts[st] = (counts[st] || 0) + 1;
+        const reg = (item.state || 'US').toUpperCase();
+        if (reg !== 'US') {
+          counts[reg] = (counts[reg] || 0) + 1;
         }
       });
       return counts;
     }
 
-    function populateStateSelects() {
-      const dataCounts = getStatesWithData();
-      const optionsHtml = US_STATES.map(s => {
-        const count = dataCounts[s.code];
-        const tag = s.code === 'US'
+    function populateRegionControls() {
+      const dataCounts = getRegionsWithData();
+
+      const optionsHtml = US_REGIONS.map(r => {
+        const count = dataCounts[r.code];
+        const tag = r.code === 'US'
           ? ''
           : count
             ? ` (${count} regional)`
             : ' (US baseline)';
-        return `<option value="${s.code}">${s.code === 'US' ? s.name : `${s.code} — ${s.name}${tag}`}</option>`;
+        return `<option value="${r.code}">${r.code === 'US' ? r.name : `${r.name} (${r.code})${tag}`}</option>`;
       }).join('');
 
-      ['global-state-select', 'estimator-state-select', 'table-state-select'].forEach(id => {
+      ['global-region-select', 'estimator-region-select', 'table-region-select'].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
           el.innerHTML = optionsHtml;
-          el.value = selectedState;
+          el.value = selectedRegion;
         }
+      });
+
+      const pillsContainer = document.getElementById('region-quick-pills');
+      pillsContainer.innerHTML = US_REGIONS.map(r => {
+        const isActive = r.code === selectedRegion ? 'active' : '';
+        return `<button type="button" class="region-chip ${isActive}" data-region-code="${r.code}">${r.code === 'US' ? 'All US' : r.name}</button>`;
+      }).join('');
+
+      pillsContainer.querySelectorAll('.region-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          setActiveRegion(btn.dataset.regionCode);
+        });
       });
     }
 
-    function setActiveState(newCode) {
-      selectedState = (newCode || 'US').toUpperCase();
+    function setActiveRegion(newCode) {
+      selectedRegion = (newCode || 'US').toUpperCase();
+      const regionInfo = getRegionInfo(selectedRegion);
 
-      ['global-state-select', 'estimator-state-select', 'table-state-select'].forEach(id => {
+      ['global-region-select', 'estimator-region-select', 'table-region-select'].forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.value = selectedState;
+        if (el) el.value = selectedRegion;
+      });
+
+      document.querySelectorAll('.region-chip').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.regionCode === selectedRegion);
       });
 
       const badge = document.getElementById('active-region-badge');
       const resetBtn = document.getElementById('reset-region-btn');
       const fallbackWrapper = document.getElementById('fallback-toggle-wrapper');
 
-      if (selectedState === 'US') {
+      if (selectedRegion === 'US') {
         badge.textContent = 'US — National Baseline';
         resetBtn.style.display = 'none';
         fallbackWrapper.style.display = 'none';
       } else {
-        const count = getStatesWithData()[selectedState] || 0;
+        const count = getRegionsWithData()[selectedRegion] || 0;
         badge.textContent = count > 0
-          ? `${selectedState} — ${getStateName(selectedState)} (${count} regional ${count === 1 ? 'price' : 'prices'})`
-          : `${selectedState} — ${getStateName(selectedState)} (Using US baseline)`;
+          ? `${regionInfo.name} (${selectedRegion}) · ${count} regional ${count === 1 ? 'price' : 'prices'}`
+          : `${regionInfo.name} (${selectedRegion}) · Using US baseline`;
         resetBtn.style.display = 'inline-block';
         fallbackWrapper.style.display = 'flex';
       }
 
-      // Highlight selected state on SVG map
+      // Highlight entire region on SVG map
       document.querySelectorAll('.state-path').forEach(path => {
-        path.classList.toggle('selected', path.dataset.stateCode === selectedState);
+        path.classList.toggle('selected', path.dataset.regionCode === selectedRegion);
       });
 
-      // Reprice any catalog items already inside the Takeoff list for the newly selected state
-      repriceTakeoffForState(selectedState);
+      // Reprice any catalog items already inside the Takeoff list for the newly selected region
+      repriceTakeoffForRegion(selectedRegion);
 
       populateEstimatorDropdown();
       renderEstimateList();
       renderTable();
     }
 
-    function repriceTakeoffForState(stateCode) {
-      const resolvedPool = getResolvedItemsForState(stateCode, true);
+    function repriceTakeoffForRegion(regionCode) {
+      const resolvedPool = getResolvedItemsForRegion(regionCode, true);
       const poolByKey = new Map(resolvedPool.map(item => [normalizeMaterialKey(item), item]));
 
       estimateItems.forEach(entry => {
@@ -935,12 +977,12 @@
         if (match) {
           entry.unitPrice = Number(match.unit_price || 0);
           entry.sourceName = match.source_name || entry.sourceName;
-          entry.appliedState = (match.state || 'US').toUpperCase();
+          entry.appliedRegion = (match.state || 'US').toUpperCase();
         }
       });
     }
 
-    /* ---------------- Interactive US Map (D3 + TopoJSON) ---------------- */
+    /* ---------------- Interactive US Regional Map (D3 + TopoJSON) ---------------- */
     async function renderUSMap() {
       const container = document.getElementById('us-map-container');
       const tooltip = document.getElementById('map-tooltip');
@@ -949,18 +991,18 @@
         const res = await fetch('https://cdn.jsdelivr.net/npm/us-atlas@3/states-albers-10m.json');
         const us = await res.json();
         const states = topojson.feature(us, us.objects.states).features;
-        const stateMesh = topojson.mesh(us, us.objects.states, (a, b) => a !== b);
-        const dataCounts = getStatesWithData();
+        const dataCounts = getRegionsWithData();
 
         container.innerHTML = '';
         const svg = d3.select(container)
           .append('svg')
           .attr('viewBox', '0 0 975 610')
           .attr('role', 'img')
-          .attr('aria-label', 'Interactive United States map for selecting regional lumber prices');
+          .attr('aria-label', 'Interactive United States regional map for selecting regional lumber prices');
 
         const pathGen = d3.geoPath();
 
+        // Draw states grouped visually by region
         svg.append('g')
           .selectAll('path')
           .data(states)
@@ -968,24 +1010,32 @@
           .attr('d', pathGen)
           .attr('class', d => {
             const id = String(d.id).padStart(2, '0');
-            const st = FIPS_TO_STATE[id];
+            const reg = FIPS_TO_REGION[id];
             const classes = ['state-path'];
-            if (st && dataCounts[st.code]) classes.push('has-data');
-            if (st && st.code === selectedState) classes.push('selected');
+            if (reg && dataCounts[reg.code]) classes.push('has-data');
+            if (reg && reg.code === selectedRegion) classes.push('selected');
             return classes.join(' ');
           })
-          .attr('data-state-code', d => {
+          .attr('data-region-code', d => {
             const id = String(d.id).padStart(2, '0');
-            return FIPS_TO_STATE[id]?.code || '';
+            return FIPS_TO_REGION[id]?.code || '';
           })
           .on('mouseenter', function (event, d) {
             const id = String(d.id).padStart(2, '0');
-            const st = FIPS_TO_STATE[id];
-            if (!st) return;
-            const count = dataCounts[st.code] || 0;
+            const reg = FIPS_TO_REGION[id];
+            if (!reg) return;
+
+            // Highlight the entire region on hover
+            svg.selectAll('.state-path')
+              .classed('region-hover', p => {
+                const pid = String(p.id).padStart(2, '0');
+                return FIPS_TO_REGION[pid]?.code === reg.code;
+              });
+
+            const count = dataCounts[reg.code] || 0;
             tooltip.textContent = count > 0
-              ? `${st.name} (${st.code}) · ${count} regional ${count === 1 ? 'price' : 'prices'}`
-              : `${st.name} (${st.code}) · US baseline pricing`;
+              ? `${reg.name} Region (${reg.code}) · ${count} regional ${count === 1 ? 'price' : 'prices'}`
+              : `${reg.name} Region (${reg.code}) · US baseline pricing`;
             tooltip.style.opacity = '1';
           })
           .on('mousemove', function (event) {
@@ -993,29 +1043,37 @@
             tooltip.style.top = `${event.clientY - 28}px`;
           })
           .on('mouseleave', function () {
+            svg.selectAll('.state-path').classed('region-hover', false);
             tooltip.style.opacity = '0';
           })
           .on('click', function (event, d) {
             const id = String(d.id).padStart(2, '0');
-            const st = FIPS_TO_STATE[id];
-            if (!st) return;
-            // Clicking the already-selected state toggles back to US baseline
-            if (selectedState === st.code) {
-              setActiveState('US');
+            const reg = FIPS_TO_REGION[id];
+            if (!reg) return;
+            if (selectedRegion === reg.code) {
+              setActiveRegion('US');
             } else {
-              setActiveState(st.code);
+              setActiveRegion(reg.code);
             }
           });
 
-        svg.append('path')
-          .datum(stateMesh)
-          .attr('fill', 'none')
-          .attr('stroke', '#ffffff')
-          .attr('stroke-linejoin', 'round')
-          .attr('d', pathGen);
+        // Draw crisp outer borders around each of the 6 regions
+        US_REGIONS.filter(r => r.code !== 'US').forEach(reg => {
+          const regionFipsSet = new Set(reg.fips);
+          const regBoundary = topojson.mesh(us, us.objects.states, (a, b) => {
+            const aIn = regionFipsSet.has(String(a.id).padStart(2, '0'));
+            const bIn = regionFipsSet.has(String(b.id).padStart(2, '0'));
+            return aIn !== bIn;
+          });
+
+          svg.append('path')
+            .datum(regBoundary)
+            .attr('class', 'region-boundary')
+            .attr('d', pathGen);
+        });
       } catch (err) {
         console.error('Map load error:', err);
-        container.innerHTML = '<p class="status" style="margin: 10px 0;">Map unavailable offline — use the state dropdown above to select a region.</p>';
+        container.innerHTML = '<p class="status" style="margin: 10px 0;">Map unavailable offline — use the region buttons or dropdown above.</p>';
       }
     }
 
@@ -1046,7 +1104,7 @@
     /* ---------------- Unified Estimator Logic ---------------- */
     function populateEstimatorDropdown() {
       const select = document.getElementById('material-select');
-      const resolvedItems = getResolvedItemsForState(selectedState, true);
+      const resolvedItems = getResolvedItemsForRegion(selectedRegion, true);
 
       if (!resolvedItems.length) {
         select.innerHTML = '<option value="">No materials available</option>';
@@ -1059,9 +1117,9 @@
 
       select.innerHTML = sortedForDropdown.map((item, idx) => {
         const priceText = item.unit_price != null ? `$${Number(item.unit_price).toFixed(2)}` : 'N/A';
-        const rowState = (item.state || 'US').toUpperCase();
-        const regionTag = selectedState !== 'US' && rowState === selectedState
-          ? ` [${rowState}]`
+        const rowReg = (item.state || 'US').toUpperCase();
+        const regionTag = selectedRegion !== 'US' && rowReg === selectedRegion
+          ? ` [${rowReg}]`
           : '';
         return `<option value="${item.id ?? idx}">${item.material_name} (${item.dimensions || ''}) — ${priceText}${regionTag}</option>`;
       }).join('');
@@ -1106,6 +1164,7 @@
         month: 'short',
         day: 'numeric'
       });
+      const regionInfo = getRegionInfo(selectedRegion);
 
       let subtotal = 0;
       let totalCustomBf = 0;
@@ -1116,7 +1175,7 @@
         if (entry.bfPerPiece) {
           totalCustomBf += entry.bfPerPiece * entry.qty;
         }
-        const regionPart = entry.appliedState ? ` (${entry.appliedState})` : '';
+        const regionPart = entry.appliedRegion ? ` (${entry.appliedRegion})` : '';
         const storePart = entry.sourceName ? ` [${entry.sourceName}]` : '';
         return `${idx + 1}. ${entry.name} (${entry.dimensions || '—'}) — Qty: ${entry.qty} × ${formatPrice(entry.unitPrice)} = ${formatPrice(lineTotal)}${regionPart}${storePart}`;
       });
@@ -1124,7 +1183,7 @@
       const totalWithWaste = subtotal * (1 + wastePercent / 100);
 
       const summaryLines = [
-        `BoardfootIndex — Project Material Takeoff (${getStateName(selectedState)} · ${dateStr})`,
+        `BoardfootIndex — Project Material Takeoff (${regionInfo.name} · ${dateStr})`,
         `--------------------------------------------------`,
         ...lines,
         `--------------------------------------------------`,
@@ -1167,19 +1226,20 @@
 
     function printTakeoff() {
       const metaEl = document.getElementById('print-meta');
+      const regionInfo = getRegionInfo(selectedRegion);
       const dateStr = new Date().toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
         day: 'numeric'
       });
-      metaEl.textContent = `Project Material Takeoff · Region: ${getStateName(selectedState)} · Printed ${dateStr} · boardfootindex.com`;
+      metaEl.textContent = `Project Material Takeoff · Region: ${regionInfo.name} (${selectedRegion}) · Printed ${dateStr} · boardfootindex.com`;
       window.print();
     }
 
     function renderEstimateList() {
       const wrapper = document.getElementById('estimate-list-wrapper');
       if (estimateItems.length === 0) {
-        wrapper.innerHTML = '<p style="font-size: 0.9rem; color: #666; margin: 14px 0 0;">Select your state/region above and add standard catalog items or custom rough-sawn lumber by board foot to build a combined project takeoff.</p>';
+        wrapper.innerHTML = '<p style="font-size: 0.9rem; color: #666; margin: 14px 0 0;">Select your region above and add standard catalog items or custom rough-sawn lumber by board foot to build a combined project takeoff.</p>';
         return;
       }
 
@@ -1194,9 +1254,9 @@
         }
 
         const customBadge = entry.isCustom ? '<span class="badge-custom">BF Calc</span>' : '';
-        const regionBadge = !entry.isCustom && entry.appliedState
-          ? (entry.appliedState !== 'US'
-              ? `<span class="badge-state">${entry.appliedState}</span>`
+        const regionBadge = !entry.isCustom && entry.appliedRegion
+          ? (entry.appliedRegion !== 'US'
+              ? `<span class="badge-region">${entry.appliedRegion}</span>`
               : `<span class="badge-baseline">US</span>`)
           : '';
         const bfNote = entry.bfPerPiece
@@ -1227,7 +1287,7 @@
       wrapper.innerHTML = `
         <div class="estimate-list">
           <div class="estimate-list-header">
-            <div class="estimate-list-title">Project Takeoff List — ${selectedState} (${estimateItems.length} ${estimateItems.length === 1 ? 'line' : 'lines'})</div>
+            <div class="estimate-list-title">Project Takeoff List — ${selectedRegion} (${estimateItems.length} ${estimateItems.length === 1 ? 'line' : 'lines'})</div>
             <div class="export-actions">
               <button type="button" class="secondary-btn" id="copy-takeoff-btn">Copy Takeoff</button>
               <button type="button" class="secondary-btn" id="print-takeoff-btn">Print / Save PDF</button>
@@ -1245,7 +1305,7 @@
               <button type="button" class="secondary-btn" id="clear-estimate-btn">Clear All</button>
             </div>
             <div class="total-box">
-              Project Total (${selectedState}): ${formatPrice(totalWithWaste)}
+              Project Total (${selectedRegion}): ${formatPrice(totalWithWaste)}
               ${wastePercent > 0 ? `<small style="font-weight: 400; color: #666; font-size: 0.85rem;">(Subtotal ${formatPrice(subtotal)})</small>` : ''}
               ${totalCustomBf > 0 ? `<div style="font-size: 0.82rem; font-weight: 500; color: #555; text-align: right;">Includes ${totalCustomBf.toFixed(2)} BF custom lumber</div>` : ''}
             </div>
@@ -1316,7 +1376,7 @@
         const selectedVal = select.value;
         const qty = Math.max(1, parseInt(qtyInput.value, 10) || 1);
 
-        const resolvedPool = getResolvedItemsForState(selectedState, true);
+        const resolvedPool = getResolvedItemsForRegion(selectedRegion, true);
         const matchedItem = resolvedPool.find((item, idx) => String(item.id ?? idx) === String(selectedVal));
         if (!matchedItem) return;
 
@@ -1326,7 +1386,7 @@
         if (existing) {
           existing.qty += qty;
           existing.unitPrice = Number(matchedItem.unit_price || 0);
-          existing.appliedState = (matchedItem.state || 'US').toUpperCase();
+          existing.appliedRegion = (matchedItem.state || 'US').toUpperCase();
         } else {
           estimateItems.push({
             key,
@@ -1336,7 +1396,7 @@
             unitPrice: Number(matchedItem.unit_price || 0),
             unitLabel: matchedItem.unit_label || 'each',
             sourceName: matchedItem.source_name || '',
-            appliedState: (matchedItem.state || 'US').toUpperCase(),
+            appliedRegion: (matchedItem.state || 'US').toUpperCase(),
             qty,
             isCustom: false,
             bfPerPiece: null
@@ -1366,7 +1426,7 @@
             unitPrice: pricePerPiece,
             unitLabel: `(${bfPerPiece.toFixed(2)} BF/pc)`,
             sourceName: 'Custom BF',
-            appliedState: selectedState,
+            appliedRegion: selectedRegion,
             qty,
             isCustom: true,
             bfPerPiece
@@ -1428,13 +1488,16 @@
       const container = document.getElementById('prices-container');
       const countEl = document.getElementById('result-count');
 
-      const statePool = getResolvedItemsForState(selectedState, includeBaselineFallback);
+      const regionPool = getResolvedItemsForRegion(selectedRegion, includeBaselineFallback);
 
-      const filtered = statePool.filter(item => {
+      const filtered = regionPool.filter(item => {
         const matchesCategory =
           activeCategory === 'All' || (item.category || '').trim() === activeCategory;
 
         const q = searchQuery.trim().toLowerCase();
+        const rowRegCode = (item.state || 'US').toUpperCase();
+        const rowRegInfo = getRegionInfo(rowRegCode);
+
         const matchesSearch =
           !q ||
           [
@@ -1445,8 +1508,9 @@
             item.source_url,
             item.notes,
             item.unit_label,
-            item.state,
-            getStateName((item.state || 'US').toUpperCase())
+            rowRegCode,
+            rowRegInfo.name,
+            rowRegInfo.statesLabel
           ]
             .filter(Boolean)
             .some(field => String(field).toLowerCase().includes(q));
@@ -1456,11 +1520,11 @@
 
       const sorted = sortKey ? [...filtered].sort(compareItems) : filtered;
 
-      const regionLabel = selectedState === 'US' ? 'National Baseline' : getStateName(selectedState);
-      countEl.textContent = `Showing ${sorted.length} items for ${regionLabel} (${selectedState})`;
+      const regionInfo = getRegionInfo(selectedRegion);
+      countEl.textContent = `Showing ${sorted.length} items for ${regionInfo.name} (${selectedRegion})`;
 
       if (sorted.length === 0) {
-        container.innerHTML = `<p class="status">No matching lumber items found for ${regionLabel}. Try enabling "Include US baseline" or switching regions.</p>`;
+        container.innerHTML = `<p class="status">No matching lumber items found for ${regionInfo.name}. Try enabling "Include US baseline" or switching regions.</p>`;
         return;
       }
 
@@ -1477,15 +1541,15 @@
       }).join('');
 
       const rowsHtml = sorted.map(item => {
-        const st = (item.state || 'US').toUpperCase();
-        const statePill = st !== 'US'
-          ? `<span class="badge-state" style="margin-left: 0;">${st}</span>`
+        const reg = (item.state || 'US').toUpperCase();
+        const regPill = reg !== 'US'
+          ? `<span class="badge-region" style="margin-left: 0;">${reg}</span>`
           : `<span class="badge-baseline" style="margin-left: 0;">US</span>`;
 
         return `
           <tr>
             <td><strong>${item.material_name ?? ''}</strong></td>
-            <td>${statePill}</td>
+            <td>${regPill}</td>
             <td>${item.category ?? '—'}</td>
             <td>${item.dimensions ?? '—'}</td>
             <td>${formatPrice(item.price_per_board_foot)}</td>
@@ -1530,14 +1594,14 @@
         renderTable();
       });
 
-      ['global-state-select', 'estimator-state-select', 'table-state-select'].forEach(id => {
+      ['global-region-select', 'estimator-region-select', 'table-region-select'].forEach(id => {
         document.getElementById(id).addEventListener('change', e => {
-          setActiveState(e.target.value);
+          setActiveRegion(e.target.value);
         });
       });
 
       document.getElementById('reset-region-btn').addEventListener('click', () => {
-        setActiveState('US');
+        setActiveRegion('US');
       });
 
       document.getElementById('include-baseline-checkbox').addEventListener('change', e => {
@@ -1568,12 +1632,12 @@
       }
 
       allPrices = data || [];
-      populateStateSelects();
+      populateRegionControls();
       await renderUSMap();
-      setActiveState('US');
+      setActiveRegion('US');
     }
 
-    populateStateSelects();
+    populateRegionControls();
     setupEstimator();
     setupControls();
     loadPrices();
