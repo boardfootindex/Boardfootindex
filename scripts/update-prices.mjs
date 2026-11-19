@@ -7,7 +7,7 @@ const SCRAPER_API_KEY = process.env.SCRAPER_API_KEY || "";
 const ENABLE_JS_RENDER_FALLBACK = process.env.ENABLE_JS_RENDER_FALLBACK === "true";
 
 // Recurring site/promo/shipping decoys seen across retailer HTML/JSON-LD
-const BLOCKED_DECOY_PRICES = new Set([5, 99, 299]);
+const BLOCKED_DECOY_PRICES = new Set([5, 45, 99, 299]);
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
