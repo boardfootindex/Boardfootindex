@@ -1,633 +1,427 @@
-import fs from "node:fs";
-import { createClient } from "@supabase/supabase-js";
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Boardfootindex — Lumber & Board-Foot Estimator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased">
+  <div class="max-w-6xl mx-auto px-4 py-8 space-y-6">
+    <!-- Project & Board-Foot Estimator -->
+    <section class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h1 class="text-xl font-bold text-slate-900">Project & Board-Foot Estimator</h1>
+        <div class="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-1 text-sm font-medium">
+          <button id="modeIndexBtn" type="button" class="px-3 py-1.5 rounded-md bg-slate-900 text-white">
+            Index Materials (Per Piece / Sheet)
+          </button>
+          <button id="modeCustomBtn" type="button" class="px-3 py-1.5 rounded-md text-slate-700 hover:text-slate-900">
+            Custom / Rough Lumber (BF)
+          </button>
+        </div>
+      </div>
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const SCRAPER_API_KEY = process.env.SCRAPER_API_KEY || "";
-const WEBHOOK_URL = process.env.WEBHOOK_URL || "";
-const ENABLE_JS_RENDER_FALLBACK = process.env.ENABLE_JS_RENDER_FALLBACK === "true";
-const REQUEST_TIMEOUT_MS = 30000;
-const REQUEST_DELAY_MS = 1200;
-const CONCURRENCY = 1;
-const MAX_RETRIES = 2;
+      <div id="indexEstimatorControls" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        <div>
+          <label for="estimatorRegion" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+            Pricing Region
+          </label>
+          <select id="estimatorRegion" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+            <option value="US">National Baseline</option>
+            <option value="NE">Northeast (NE)</option>
+            <option value="SE">Southeast (SE)</option>
+            <option value="SC">South Central (SC)</option>
+            <option value="PC">Pacific Coast (PC)</option>
+          </select>
+        </div>
 
-const BLOCKED_DECOY_PRICES = new Set([5, 45, 99, 299]);
+        <div class="md:col-span-2">
+          <label for="estimatorMaterial" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+            Select Material from Index
+          </label>
+          <select id="estimatorMaterial" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"></select>
+        </div>
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-  process.exit(1);
-}
+        <div class="flex gap-2">
+          <div class="w-24">
+            <label for="estimatorQty" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+              Quantity
+            </label>
+            <input id="estimatorQty" type="number" min="1" value="1" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <button id="addToTakeoffBtn" type="button" class="flex-1 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
+            + Add to Takeoff
+          </button>
+        </div>
+      </div>
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      <div id="customEstimatorControls" class="hidden grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        <div>
+          <label for="customThickness" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+            Thickness (in)
+          </label>
+          <input id="customThickness" type="number" step="0.25" min="0.25" value="1" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label for="customWidth" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+            Width (in)
+          </label>
+          <input id="customWidth" type="number" step="0.5" min="1" value="6" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label for="customLength" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+            Length (ft) & Qty
+          </label>
+          <div class="flex gap-2">
+            <input id="customLength" type="number" step="1" min="1" value="8" class="w-1/2 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            <input id="customQty" type="number" step="1" min="1" value="1" class="w-1/2 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div>
+          <label for="customRatePerBf" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+            Rate ($ / BF)
+          </label>
+          <input id="customRatePerBf" type="number" step="0.01" min="0.1" value="4.50" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        </div>
+      </div>
 
-const report = {
-  updated: [],
-  outOfStock: [],
-  outliers: [],
-  unparsed: [],
-  urlAudits: [],
-  failed: [],
-};
+      <p class="mt-3 text-xs text-slate-500">
+        Select your region above and add standard catalog items or custom rough-sawn lumber by board foot to build a combined project takeoff.
+      </p>
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+      <div id="takeoffList" class="mt-4 border-t border-slate-100 pt-4 hidden">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-sm font-semibold text-slate-800">Project Takeoff</h2>
+          <button id="clearTakeoffBtn" type="button" class="text-xs text-rose-600 hover:underline">Clear All</button>
+        </div>
+        <ul id="takeoffItems" class="divide-y divide-slate-100 text-sm"></ul>
+        <div id="takeoffTotal" class="mt-3 pt-2 border-t border-slate-200 flex justify-between font-bold text-slate-900"></div>
+      </div>
+    </section>
 
-function isGenericOrCategoryUrl(url = "") {
-  try {
-    const parsed = new URL(url);
-    const path = parsed.pathname.toLowerCase();
-    if (!path || path === "/") return true;
-    if (/^\/(b|c|s|pl|browse|category|categories|search)\b/.test(path)) return true;
-    return false;
-  } catch {
-    return true;
-  }
-}
+    <!-- Category Filters & Search -->
+    <section class="space-y-4">
+      <div id="categoryFilters" class="flex flex-wrap gap-2">
+        <button data-category="ALL" class="cat-btn px-3.5 py-1.5 rounded-lg text-sm font-semibold bg-slate-900 text-white">All</button>
+        <button data-category="Framing & Posts" class="cat-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-100">Framing & Posts</button>
+        <button data-category="Headers & Beams" class="cat-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-100">Headers & Beams</button>
+        <button data-category="Sheathing & Subfloor" class="cat-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-100">Sheathing & Subfloor</button>
+        <button data-category="Trim & Paneling" class="cat-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-100">Trim & Paneling</button>
+        <button data-category="Cabinet Plywood & Sheet" class="cat-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-100">Cabinet Plywood & Sheet</button>
+        <button data-category="Hardwood Lumber" class="cat-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-100">Hardwood Lumber</button>
+      </div>
 
-function extractTitle(html = "") {
-  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  return match ? match[1].replace(/\s+/g, " ").trim() : "";
-}
+      <div class="flex flex-col sm:flex-row gap-3">
+        <select id="tableRegionFilter" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm sm:w-56">
+          <option value="US">National Baseline</option>
+          <option value="ALL">All Regions</option>
+          <option value="NE">Northeast (NE)</option>
+          <option value="SE">Southeast (SE)</option>
+          <option value="SC">South Central (SC)</option>
+          <option value="PC">Pacific Coast (PC)</option>
+        </select>
+        <input
+          id="searchInput"
+          type="text"
+          placeholder="Search material, size, region (e.g. Northeast, SE, PC), or store..."
+          class="flex-1 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm"
+        />
+      </div>
 
-function isValidPriceCandidate(num) {
-  return Number.isFinite(num) && num >= 1 && num <= 2000 && !BLOCKED_DECOY_PRICES.has(num);
-}
+      <div id="countSummary" class="text-sm text-slate-600">Loading prices...</div>
+    </section>
 
-function detectOutOfStock(html = "") {
-  if (
-    /https?:\/\/schema\.org\/OutOfStock/i.test(html) ||
-    /"availability"\s*:\s*"[^"]*OutOfStock/i.test(html) ||
-    /"inventoryStatus"\s*:\s*"OUT_OF_STOCK"/i.test(html)
-  ) {
-    return "Out of Stock (structured data)";
-  }
+    <!-- Prices Table -->
+    <section class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-slate-200 text-left text-sm">
+          <thead class="bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-600">
+            <tr>
+              <th class="py-3 px-4">Material</th>
+              <th class="py-3 px-4">Region</th>
+              <th class="py-3 px-4">Category</th>
+              <th class="py-3 px-4">Dimensions</th>
+              <th class="py-3 px-4">$/BF</th>
+              <th class="py-3 px-4">Unit Price</th>
+              <th class="py-3 px-4">Source</th>
+            </tr>
+          </thead>
+          <tbody id="pricesTableBody" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
 
-  const visibleText = html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  <script>
+    const SUPABASE_URL = "https://atfzmiyscncztytvu.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_K66EHMpK9sulhGWaHdhPSQ_rm0AvcZG";
 
-  const oosPatterns = [
-    /\bout of stock\b/i,
-    /\bthis item is currently unavailable\b/i,
-    /\bcurrently unavailable\b/i,
-    /\btemporarily unavailable\b/i,
-    /\bunavailable nearby\b/i,
-    /\bsold out\b/i,
-    /\bnot available in (your )?store\b/i,
-  ];
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  for (const pattern of oosPatterns) {
-    if (pattern.test(visibleText)) {
-      return "Out of Stock — item currently unavailable";
+    let allRows = [];
+    let selectedCategory = "ALL";
+    let takeoff = [];
+
+    function escapeHtml(str = "") {
+      return String(str)
+        .replace(/&/g, "&")
+        .replace(/</g, "<")
+        .replace(/>/g, ">")
+        .replace(/"/g, """);
     }
-  }
 
-  return null;
-}
+    function storeLabel(url = "") {
+      if (!url) return "Store ↗";
+      return url.toLowerCase().includes("lowes.com") ? "Lowe's ↗" : "The Home Depot ↗";
+    }
 
-function extractJsonLdPrices(html = "") {
-  const prices = [];
-  const scriptMatches = [
-    ...html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi),
-  ];
+    function calcPricePerBf(row) {
+      const price = Number(row.unit_price);
+      if (!Number.isFinite(price) || price <= 0) return "—";
+      const dims = String(row.dimensions || "").toLowerCase();
+      const parts = dims.match(/(\d+(?:-\d+\/\d+|\s+\d+\/\d+|\.\d+|\/\d+)?)\s*x\s*(\d+(?:-\d+\/\d+|\s+\d+\/\d+|\.\d+|\/\d+)?)\s*x\s*(\d+(?:\.\d+)?)/i);
+      if (!parts) return "—";
 
-  for (const match of scriptMatches) {
-    try {
-      const data = JSON.parse(match[1].trim());
-      const stack = [data];
-      while (stack.length > 0) {
-        const current = stack.pop();
-        if (!current || typeof current !== "object") continue;
-        if (Array.isArray(current)) {
-          stack.push(...current);
-          continue;
+      const parseFractionOrNum = (token) => {
+        token = token.trim();
+        if (token.includes("-")) {
+          const [whole, frac] = token.split("-");
+          const [n, d] = frac.split("/");
+          return Number(whole) + Number(n) / Number(d);
         }
-        if (current.offers) {
-          stack.push(current.offers);
+        if (token.includes("/")) {
+          const [n, d] = token.split("/");
+          return Number(n) / Number(d);
         }
-        for (const key of ["price", "lowPrice", "highPrice"]) {
-          if (current[key] !== undefined && current[key] !== null) {
-            const num = Number.parseFloat(String(current[key]).replace(/[^0-9.]/g, ""));
-            if (isValidPriceCandidate(num)) {
-              prices.push(num);
-            }
-          }
-        }
-        for (const val of Object.values(current)) {
-          if (val && typeof val === "object") stack.push(val);
-        }
-      }
-    } catch {
-      // Ignore malformed JSON-LD blocks
-    }
-  }
+        return Number(token);
+      };
 
-  return prices;
-}
-
-function extractEmbeddedScriptPrices(html = "") {
-  const prices = [];
-  const scriptMatches = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
-
-  const priceKeyRegex =
-    /"(?:price|salePrice|sellingPrice|unitPrice|finalPrice|regularPrice|offerPrice|value)"\s*:\s*"?\$?\s*(\d{1,4}(?:\.\d{1,2})?)"?/gi;
-
-  for (const scriptMatch of scriptMatches) {
-    const content = scriptMatch[1];
-    if (!content || content.length < 20) continue;
-
-    for (const match of content.matchAll(priceKeyRegex)) {
-      const num = Number.parseFloat(match[1]);
-      if (isValidPriceCandidate(num)) {
-        prices.push(num);
-      }
-    }
-  }
-
-  return prices;
-}
-
-function extractHtmlTextPrices(html = "") {
-  const cleanedHtml = html
-    .replace(/<(del|s|strike)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ");
-
-  const text = cleanedHtml
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  const badContextRegex =
-    /\b(per\s*(sq\.?\s*ft|sqft|lf|linear\s*ft|ft|bf|board\s*ft)|\/\s*(ft|sqft|lf|bf)|sample|swatch|save\s*\$)\b/i;
-
-  const matches = [...text.matchAll(/\$\s*(\d{1,4}(?:,\d{3})*(?:\.\d{1,2})?)/g)];
-  const candidates = [];
-
-  for (const match of matches) {
-    const val = Number.parseFloat(match[1].replace(/,/g, ""));
-    if (!isValidPriceCandidate(val)) {
-      continue;
+      const t = parseFractionOrNum(parts[1]);
+      const w = parseFractionOrNum(parts[2]);
+      const lFt = Number(parts[3]);
+      const bf = (t * w * lFt) / 12;
+      if (!Number.isFinite(bf) || bf <= 0) return "—";
+      return `$${(price / bf).toFixed(2)}`;
     }
 
-    const start = Math.max(0, (match.index ?? 0) - 40);
-    const end = Math.min(text.length, (match.index ?? 0) + match[0].length + 40);
-    const snippet = text.slice(start, end);
+    function renderSourceCell(row) {
+      const isOutOfStock = row.stock_status === "out_of_stock";
+      const primaryLinkClass = isOutOfStock
+        ? "line-through text-slate-400 hover:underline"
+        : "text-blue-600 font-medium hover:underline";
 
-    if (!badContextRegex.test(snippet)) {
-      candidates.push(val);
+      const primaryHtml = row.source_url
+        ? `<a href="${escapeHtml(row.source_url)}" target="_blank" rel="noopener noreferrer" class="${primaryLinkClass}">${escapeHtml(storeLabel(row.source_url))}</a>`
+        : `<span class="text-slate-400">No link</span>`;
+
+      const badgeHtml = isOutOfStock
+        ? `<span class="inline-flex items-center w-fit rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Out of Stock</span>`
+        : "";
+
+      const noteHtml = isOutOfStock && row.stock_note
+        ? `<span class="text-[11px] text-amber-700">${escapeHtml(row.stock_note)}</span>`
+        : "";
+
+      const backupHtml = row.backup_url
+        ? `<a href="${escapeHtml(row.backup_url)}" target="_blank" rel="noopener noreferrer" class="text-xs font-semibold text-emerald-700 hover:underline">${isOutOfStock ? "Alternative: " : "Backup: "}${escapeHtml(storeLabel(row.backup_url))}</a>`
+        : "";
+
+      return `<div class="flex flex-col gap-1">${primaryHtml}${badgeHtml}${noteHtml}${backupHtml}</div>`;
     }
-  }
 
-  return candidates;
-}
+    function getFilteredRows() {
+      const region = document.getElementById("tableRegionFilter").value;
+      const query = document.getElementById("searchInput").value.trim().toLowerCase();
 
-function selectBestPrice(candidates, currentPrice) {
-  if (!candidates || candidates.length === 0) {
-    return { status: "unparsed", price: null };
-  }
-
-  const numericCurrent = Number(currentPrice);
-  if (Number.isFinite(numericCurrent) && numericCurrent > 0) {
-    const withinRange = candidates.filter(
-      (p) => p >= numericCurrent * 0.65 && p <= numericCurrent * 1.5
-    );
-    if (withinRange.length > 0) {
-      return { status: "ok", price: withinRange[0] };
-    }
-    return {
-      status: "outlier",
-      price: null,
-      candidate: candidates[0],
-    };
-  }
-
-  return { status: "ok", price: candidates[0] };
-}
-
-function extractPriceFromHtml(html, currentPrice) {
-  const jsonLdCandidates = extractJsonLdPrices(html);
-  if (jsonLdCandidates.length > 0) {
-    const jsonPick = selectBestPrice(jsonLdCandidates, currentPrice);
-    if (jsonPick.status === "ok") return jsonPick;
-  }
-
-  const scriptCandidates = extractEmbeddedScriptPrices(html);
-  if (scriptCandidates.length > 0) {
-    const scriptPick = selectBestPrice(scriptCandidates, currentPrice);
-    if (scriptPick.status === "ok") return scriptPick;
-  }
-
-  const textCandidates = extractHtmlTextPrices(html);
-  const textPick = selectBestPrice(textCandidates, currentPrice);
-  if (textPick.status === "ok") return textPick;
-
-  const firstOutlier =
-    jsonLdCandidates[0] ?? scriptCandidates[0] ?? textCandidates[0] ?? null;
-
-  if (firstOutlier !== null) {
-    return {
-      status: "outlier",
-      price: null,
-      candidate: firstOutlier,
-    };
-  }
-
-  return { status: "unparsed", price: null };
-}
-
-function isRetryableError(err) {
-  const msg = String(err?.message || "");
-  return (
-    err?.name === "TimeoutError" ||
-    msg.includes("HTTP 429") ||
-    msg.includes("HTTP 500") ||
-    msg.includes("HTTP 502") ||
-    msg.includes("HTTP 503") ||
-    msg.includes("HTTP 504")
-  );
-}
-
-async function fetchPageHtml(targetUrl, renderJs = false) {
-  const fetchUrl = SCRAPER_API_KEY
-    ? `https://api.scraperapi.com?api_key=${encodeURIComponent(SCRAPER_API_KEY)}&url=${encodeURIComponent(targetUrl)}${renderJs ? "&render=true" : ""}`
-    : targetUrl;
-
-  let lastErr;
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const response = await fetch(fetchUrl, {
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        headers: SCRAPER_API_KEY
-          ? {}
-          : {
-              "User-Agent":
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            },
+      return allRows.filter((row) => {
+        const matchesCat = selectedCategory === "ALL" || row.category === selectedCategory;
+        const matchesRegion = region === "ALL" || (row.state || "US") === region;
+        const hay = `${row.material_name || ""} ${row.dimensions || ""} ${row.category || ""} ${row.state || ""}`.toLowerCase();
+        const matchesQuery = !query || hay.includes(query);
+        return matchesCat && matchesRegion && matchesQuery;
       });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      return await response.text();
-    } catch (err) {
-      lastErr = err;
-      if (attempt < MAX_RETRIES && isRetryableError(err)) {
-        const backoffMs = 2000 * (attempt + 1);
-        await sleep(backoffMs);
-        continue;
-      }
-      throw err;
     }
-  }
 
-  throw lastErr;
-}
+    function renderTable() {
+      const rows = getFilteredRows();
+      const region = document.getElementById("tableRegionFilter").value;
+      const regionLabel = region === "US" ? "National Baseline (US)" : region;
 
-function auditPageTitle(row, title) {
-  if (!title) return;
-  const lowerTitle = title.toLowerCase();
-  if (
-    lowerTitle.includes("page not found") ||
-    lowerTitle.includes("404") ||
-    lowerTitle.includes("access denied") ||
-    lowerTitle.includes("robot")
-  ) {
-    report.urlAudits.push({
-      id: row.id,
-      state: row.state,
-      material: row.material_name,
-      reason: `Suspicious page title: "${title}"`,
-    });
-  }
-}
+      document.getElementById("countSummary").textContent =
+        `Showing ${rows.length} item${rows.length === 1 ? "" : "s"} for ${regionLabel}`;
 
-async function evaluateUrlCandidate(url, currentPrice, label, role, row) {
-  if (!url) {
-    return { status: "missing", reason: "Missing URL" };
-  }
-
-  if (isGenericOrCategoryUrl(url)) {
-    report.urlAudits.push({
-      id: row.id,
-      state: row.state,
-      material: `${row.material_name} (${role})`,
-      reason: `Generic/category URL: ${url}`,
-    });
-    return { status: "invalid", reason: "Generic/category URL" };
-  }
-
-  let html = await fetchPageHtml(url, false);
-  let oosReason = detectOutOfStock(html);
-  let parsed = oosReason ? { status: "out_of_stock", price: null } : extractPriceFromHtml(html, currentPrice);
-
-  if (!oosReason && parsed.status === "unparsed" && SCRAPER_API_KEY && ENABLE_JS_RENDER_FALLBACK) {
-    html = await fetchPageHtml(url, true);
-    oosReason = detectOutOfStock(html);
-    parsed = oosReason ? { status: "out_of_stock", price: null } : extractPriceFromHtml(html, currentPrice);
-  }
-
-  const title = extractTitle(html);
-  auditPageTitle(row, title);
-
-  if (oosReason) {
-    console.log(`📦 Out of stock on ${role} URL for ${label}: ${oosReason}`);
-    return { status: "out_of_stock", reason: oosReason, title };
-  }
-
-  if (parsed.status === "ok" && typeof parsed.price === "number") {
-    return { status: "ok", price: parsed.price, title };
-  }
-
-  if (parsed.status === "outlier") {
-    return { status: "outlier", candidate: parsed.candidate, title };
-  }
-
-  return { status: "unparsed", title };
-}
-
-async function processRow(row) {
-  const label = `"${row.material_name}" (${row.state || "US"})`;
-
-  try {
-    const primary = await evaluateUrlCandidate(row.source_url, row.unit_price, label, "primary", row);
-
-    let chosenPrice = null;
-    let usedBackup = false;
-    let stockStatus = "in_stock";
-    let stockNote = null;
-
-    if (primary.status === "ok") {
-      chosenPrice = primary.price;
-      stockStatus = "in_stock";
-      stockNote = null;
-    } else {
-      if (primary.status === "out_of_stock") {
-        stockStatus = "out_of_stock";
-        stockNote = row.backup_url
-          ? "Primary store out of stock — showing backup option"
-          : "Primary store out of stock";
-
-        report.outOfStock.push({
-          id: row.id,
-          state: row.state,
-          material: row.material_name,
-          urlType: "primary",
-          reason: primary.reason,
-          usedBackup: false,
-        });
+      const tbody = document.getElementById("pricesTableBody");
+      if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-6 px-4 text-center text-slate-500">No matching materials found.</td></tr>`;
+        return;
       }
 
-      if (row.backup_url) {
-        await sleep(REQUEST_DELAY_MS);
-        const backup = await evaluateUrlCandidate(row.backup_url, row.unit_price, label, "backup", row);
+      tbody.innerHTML = rows
+        .map((row) => {
+          const priceDisplay =
+            row.unit_price !== null && row.unit_price !== undefined
+              ? `$${Number(row.unit_price).toFixed(2)}`
+              : "—";
 
-        if (backup.status === "ok") {
-          chosenPrice = backup.price;
-          usedBackup = true;
-          if (primary.status === "out_of_stock") {
-            stockStatus = "out_of_stock";
-            stockNote = "Primary store out of stock — priced from backup store";
-            const existingOos = report.outOfStock.find(
-              (x) => x.id === row.id && x.urlType === "primary"
-            );
-            if (existingOos) existingOos.usedBackup = true;
-          }
-        } else if (backup.status === "out_of_stock") {
-          if (primary.status === "out_of_stock") {
-            stockStatus = "out_of_stock";
-            stockNote = "Out of stock at both primary and backup stores";
-          }
-          report.outOfStock.push({
-            id: row.id,
-            state: row.state,
-            material: row.material_name,
-            urlType: "backup",
-            reason: backup.reason,
-            usedBackup: false,
+          return `
+            <tr class="${row.stock_status === "out_of_stock" ? "bg-amber-50/40" : "hover:bg-slate-50"}">
+              <td class="py-3 px-4 font-semibold text-slate-900">${escapeHtml(row.material_name)}</td>
+              <td class="py-3 px-4"><span class="inline-block rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">${escapeHtml(row.state || "US")}</span></td>
+              <td class="py-3 px-4 text-slate-600">${escapeHtml(row.category || "Lumber")}</td>
+              <td class="py-3 px-4 text-slate-700 whitespace-nowrap">${escapeHtml(row.dimensions || "—")}</td>
+              <td class="py-3 px-4 text-slate-600">${calcPricePerBf(row)}</td>
+              <td class="py-3 px-4 font-semibold text-slate-900 whitespace-nowrap">${priceDisplay} <span class="text-xs font-normal text-slate-500">(each)</span></td>
+              <td class="py-3 px-4">${renderSourceCell(row)}</td>
+            </tr>
+          `;
+        })
+        .join("");
+    }
+
+    function populateEstimatorSelect() {
+      const estRegion = document.getElementById("estimatorRegion").value;
+      const select = document.getElementById("estimatorMaterial");
+      const matches = allRows.filter((r) => (r.state || "US") === estRegion);
+      const pool = matches.length > 0 ? matches : allRows;
+
+      select.innerHTML = pool
+        .map((r, idx) => {
+          const price = Number(r.unit_price || 0).toFixed(2);
+          const oosTag = r.stock_status === "out_of_stock" ? " [OUT OF STOCK]" : "";
+          return `<option value="${idx}">${escapeHtml(r.material_name)} (${escapeHtml(r.dimensions || "")}) — $${price}${oosTag}</option>`;
+        })
+        .join("");
+    }
+
+    function renderTakeoff() {
+      const box = document.getElementById("takeoffList");
+      const list = document.getElementById("takeoffItems");
+      const totalEl = document.getElementById("takeoffTotal");
+
+      if (takeoff.length === 0) {
+        box.classList.add("hidden");
+        return;
+      }
+
+      box.classList.remove("hidden");
+      let total = 0;
+      list.innerHTML = takeoff
+        .map((item, i) => {
+          const lineTotal = item.qty * item.unitPrice;
+          total += lineTotal;
+          return `
+            <li class="py-2 flex items-center justify-between gap-3">
+              <div>
+                <span class="font-medium text-slate-900">${escapeHtml(item.name)}</span>
+                <span class="text-slate-500">× ${item.qty} @ $${item.unitPrice.toFixed(2)}</span>
+                ${item.outOfStock ? `<span class="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800">Out of Stock</span>` : ""}
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="font-semibold text-slate-900">$${lineTotal.toFixed(2)}</span>
+                <button data-remove="${i}" class="text-xs text-slate-400 hover:text-rose-600">✕</button>
+              </div>
+            </li>
+          `;
+        })
+        .join("");
+
+      totalEl.innerHTML = `<span>Estimated Total</span><span>$${total.toFixed(2)}</span>`;
+      list.querySelectorAll("[data-remove]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          takeoff.splice(Number(btn.dataset.remove), 1);
+          renderTakeoff();
+        });
+      });
+    }
+
+    async function loadCatalog() {
+      const { data, error } = await db
+        .from("lumber_prices")
+        .select("id, state, category, material_name, dimensions, unit_price, source_url, backup_url, stock_status, stock_note")
+        .order("material_name", { ascending: true });
+
+      if (error) {
+        document.getElementById("countSummary").textContent = `Error loading prices: ${error.message}`;
+        return;
+      }
+
+      allRows = data || [];
+      populateEstimatorSelect();
+      renderTable();
+    }
+
+    document.querySelectorAll(".cat-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        selectedCategory = btn.dataset.category;
+        document.querySelectorAll(".cat-btn").forEach((b) => {
+          const active = b.dataset.category === selectedCategory;
+          b.className = active
+            ? "cat-btn px-3.5 py-1.5 rounded-lg text-sm font-semibold bg-slate-900 text-white"
+            : "cat-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-100";
+        });
+        renderTable();
+      });
+    });
+
+    document.getElementById("tableRegionFilter").addEventListener("change", renderTable);
+    document.getElementById("searchInput").addEventListener("input", renderTable);
+    document.getElementById("estimatorRegion").addEventListener("change", populateEstimatorSelect);
+
+    document.getElementById("modeIndexBtn").addEventListener("click", () => {
+      document.getElementById("modeIndexBtn").className = "px-3 py-1.5 rounded-md bg-slate-900 text-white";
+      document.getElementById("modeCustomBtn").className = "px-3 py-1.5 rounded-md text-slate-700 hover:text-slate-900";
+      document.getElementById("indexEstimatorControls").classList.remove("hidden");
+      document.getElementById("customEstimatorControls").classList.add("hidden");
+    });
+
+    document.getElementById("modeCustomBtn").addEventListener("click", () => {
+      document.getElementById("modeCustomBtn").className = "px-3 py-1.5 rounded-md bg-slate-900 text-white";
+      document.getElementById("modeIndexBtn").className = "px-3 py-1.5 rounded-md text-slate-700 hover:text-slate-900";
+      document.getElementById("indexEstimatorControls").classList.add("hidden");
+      document.getElementById("customEstimatorControls").classList.remove("hidden");
+    });
+
+    document.getElementById("addToTakeoffBtn").addEventListener("click", () => {
+      const isCustom = !document.getElementById("customEstimatorControls").classList.contains("hidden");
+      if (isCustom) {
+        const t = Number(document.getElementById("customThickness").value) || 1;
+        const w = Number(document.getElementById("customWidth").value) || 6;
+        const l = Number(document.getElementById("customLength").value) || 8;
+        const qty = Math.max(1, Number(document.getElementById("customQty").value) || 1);
+        const rate = Number(document.getElementById("customRatePerBf").value) || 0;
+        const bfPerPiece = (t * w * l) / 12;
+        takeoff.push({
+          name: `Custom ${t}x${w}x${l}' (${bfPerPiece.toFixed(2)} BF/pc)`,
+          qty,
+          unitPrice: bfPerPiece * rate,
+          outOfStock: false,
+        });
+      } else {
+        const estRegion = document.getElementById("estimatorRegion").value;
+        const matches = allRows.filter((r) => (r.state || "US") === estRegion);
+        const pool = matches.length > 0 ? matches : allRows;
+        const row = pool[Number(document.getElementById("estimatorMaterial").value)];
+        const qty = Math.max(1, Number(document.getElementById("estimatorQty").value) || 1);
+        if (row) {
+          takeoff.push({
+            name: `${row.material_name} (${row.state || "US"})`,
+            qty,
+            unitPrice: Number(row.unit_price || 0),
+            outOfStock: row.stock_status === "out_of_stock",
           });
         }
       }
-    }
-
-    if (typeof chosenPrice === "number") {
-      const oldPrice = row.unit_price;
-      const newPrice = Number(chosenPrice.toFixed(2));
-
-      const { error: updateError } = await supabase
-        .from("lumber_prices")
-        .update({
-          unit_price: newPrice,
-          stock_status: stockStatus,
-          stock_note: stockNote,
-        })
-        .eq("id", row.id);
-
-      if (updateError) {
-        throw new Error(`Supabase update error: ${updateError.message}`);
-      }
-
-      report.updated.push({
-        id: row.id,
-        state: row.state,
-        material: row.material_name,
-        oldPrice,
-        newPrice,
-        usedBackup,
-      });
-      console.log(
-        `✓ Updated ${label} [${usedBackup ? "backup" : "primary"}]: $${oldPrice ?? "N/A"} -> $${newPrice}`
-      );
-    } else {
-      if (primary.status === "out_of_stock") {
-        await supabase
-          .from("lumber_prices")
-          .update({
-            stock_status: stockStatus,
-            stock_note: stockNote,
-          })
-          .eq("id", row.id);
-      }
-
-      if (primary.status === "outlier") {
-        report.outliers.push({
-          id: row.id,
-          state: row.state,
-          material: row.material_name,
-          currentPrice: row.unit_price,
-          candidatePrice: primary.candidate,
-        });
-        console.log(
-          `⚠ Outlier rejected for ${label}: candidate $${primary.candidate} vs current $${row.unit_price} (keeping $${row.unit_price})`
-        );
-      } else if (primary.status !== "out_of_stock") {
-        report.unparsed.push({
-          id: row.id,
-          state: row.state,
-          material: row.material_name,
-          currentPrice: row.unit_price,
-          title: primary.title || "No title",
-        });
-        console.log(
-          `⚠ Could not parse price for ${label} — keeping $${row.unit_price ?? "N/A"}`
-        );
-      }
-    }
-  } catch (err) {
-    const msg =
-      err.name === "TimeoutError" ? `Timeout after ${REQUEST_TIMEOUT_MS / 1000}s` : err.message;
-    report.failed.push({
-      id: row.id,
-      state: row.state,
-      material: row.material_name,
-      error: msg,
+      renderTakeoff();
     });
-    console.log(`✕ Failed for ${label}: ${msg}`);
-  } finally {
-    if (REQUEST_DELAY_MS > 0) {
-      await sleep(REQUEST_DELAY_MS);
-    }
-  }
-}
 
-async function runWithConcurrency(items, limit, worker) {
-  let index = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (true) {
-      const currentIndex = index++;
-      if (currentIndex >= items.length) break;
-      await worker(items[currentIndex]);
-    }
-  });
-  await Promise.all(workers);
-}
-
-async function sendOutOfStockNotification() {
-  if (!WEBHOOK_URL || report.outOfStock.length === 0) return;
-
-  const summaryText = report.outOfStock
-    .map(
-      (item) =>
-        `• ${item.material} (${item.state || "US"}) [${item.urlType}]: ${item.reason}${
-          item.usedBackup ? " (used backup URL)" : ""
-        }`
-    )
-    .join("\n");
-
-  try {
-    await fetch(WEBHOOK_URL, {
-      method: "POST",
-      signal: AbortSignal.timeout(10000),
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text: `Boardfootindex Out-of-Stock Alerts (${report.outOfStock.length}):\n${summaryText}`,
-        content: `Boardfootindex Out-of-Stock Alerts (${report.outOfStock.length}):\n${summaryText}`,
-      }),
+    document.getElementById("clearTakeoffBtn").addEventListener("click", () => {
+      takeoff = [];
+      renderTakeoff();
     });
-  } catch (err) {
-    console.log(`⚠ Failed to send webhook notification: ${err.message}`);
-  }
-}
 
-function writeStepSummary() {
-  if (!process.env.GITHUB_STEP_SUMMARY) return;
-
-  const lines = [
-    "## Boardfootindex Price Bot Report",
-    "",
-    `| Status | Count |`,
-    `| --- | ---: |`,
-    `| Updated | ${report.updated.length} |`,
-    `| Out of Stock Alerts | ${report.outOfStock.length} |`,
-    `| Outliers Rejected (Kept Current) | ${report.outliers.length} |`,
-    `| Unparsed (Kept Current) | ${report.unparsed.length} |`,
-    `| URL / Title Audits Needed | ${report.urlAudits.length} |`,
-    `| Fetch / DB Errors | ${report.failed.length} |`,
-    "",
-  ];
-
-  if (report.outOfStock.length > 0) {
-    lines.push("### Out of Stock Alerts", "");
-    for (const item of report.outOfStock) {
-      const fallbackNote =
-        item.urlType === "primary"
-          ? item.usedBackup
-            ? " — covered via backup URL"
-            : " — no in-stock backup price used"
-          : "";
-      lines.push(
-        `- **${item.material}** (${item.state || "US"}) [${item.urlType}]: ${item.reason}${fallbackNote}`
-      );
-    }
-    lines.push("");
-  }
-
-  if (report.outliers.length > 0) {
-    lines.push("### Outlier Prices Rejected", "");
-    for (const item of report.outliers) {
-      lines.push(
-        `- **${item.material}** (${item.state || "US"}): kept **$${item.currentPrice}**, ignored candidate **$${item.candidatePrice}**`
-      );
-    }
-    lines.push("");
-  }
-
-  if (report.urlAudits.length > 0) {
-    lines.push("### URL & Page Audits", "");
-    for (const item of report.urlAudits) {
-      lines.push(`- **${item.material}** (${item.state || "US"}): ${item.reason} (\`${item.id}\`)`);
-    }
-    lines.push("");
-  }
-
-  if (report.unparsed.length > 0) {
-    lines.push("### Unparsed Rows", "");
-    for (const item of report.unparsed) {
-      lines.push(
-        `- **${item.material}** (${item.state || "US"}): kept **$${item.currentPrice ?? "N/A"}** — *${item.title}*`
-      );
-    }
-    lines.push("");
-  }
-
-  fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n"));
-}
-
-async function main() {
-  console.log("Fetching lumber catalog from Supabase...");
-  const { data: rows, error } = await supabase
-    .from("lumber_prices")
-    .select("id, state, material_name, dimensions, unit_price, source_url, backup_url")
-    .order("state", { ascending: true })
-    .order("material_name", { ascending: true });
-
-  if (error) {
-    console.error("Failed to fetch lumber_prices:", error.message);
-    process.exit(1);
-  }
-
-  const catalog = (rows || []).filter((r) => Boolean(r.source_url) || Boolean(r.backup_url));
-  console.log(`Found ${catalog.length} rows with source or backup URLs.`);
-
-  await runWithConcurrency(catalog, CONCURRENCY, processRow);
-
-  writeStepSummary();
-  await sendOutOfStockNotification();
-
-  const skippedOrIssues =
-    report.outliers.length +
-    report.unparsed.length +
-    report.urlAudits.length +
-    report.failed.length;
-
-  console.log(
-    `Done. Updated: ${report.updated.length}, OutOfStock: ${report.outOfStock.length}, Outliers: ${report.outliers.length}, Unparsed: ${report.unparsed.length}, Audits: ${report.urlAudits.length}, Failed: ${report.failed.length} (Total non-updated: ${skippedOrIssues})`
-  );
-}
-
-main();
+    loadCatalog();
+  </script>
+</body>
+</html>
