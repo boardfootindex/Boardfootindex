@@ -5,8 +5,10 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SCRAPER_API_KEY = process.env.SCRAPER_API_KEY || "";
 const ENABLE_JS_RENDER_FALLBACK = process.env.ENABLE_JS_RENDER_FALLBACK === "true";
-const REQUEST_TIMEOUT_MS = 25000;
-const CONCURRENCY = 3;
+const REQUEST_TIMEOUT_MS = 30000;
+const REQUEST_DELAY_MS = 1200;
+const CONCURRENCY = 1;
+const MAX_RETRIES = 2;
 
 // Recurring site/promo/shipping decoys seen across retailer HTML/JSON-LD
 const BLOCKED_DECOY_PRICES = new Set([5, 45, 99, 299]);
@@ -25,6 +27,10 @@ const report = {
   urlAudits: [],
   failed: [],
 };
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function isGenericOrCategoryUrl(url = "") {
   try {
@@ -168,26 +174,22 @@ function selectBestPrice(candidates, currentPrice) {
 }
 
 function extractPriceFromHtml(html, currentPrice) {
-  // 1. Structured JSON-LD
   const jsonLdCandidates = extractJsonLdPrices(html);
   if (jsonLdCandidates.length > 0) {
     const jsonPick = selectBestPrice(jsonLdCandidates, currentPrice);
     if (jsonPick.status === "ok") return jsonPick;
   }
 
-  // 2. Embedded inline script / Next.js JSON state
   const scriptCandidates = extractEmbeddedScriptPrices(html);
   if (scriptCandidates.length > 0) {
     const scriptPick = selectBestPrice(scriptCandidates, currentPrice);
     if (scriptPick.status === "ok") return scriptPick;
   }
 
-  // 3. Visible HTML text prices
   const textCandidates = extractHtmlTextPrices(html);
   const textPick = selectBestPrice(textCandidates, currentPrice);
   if (textPick.status === "ok") return textPick;
 
-  // Report best outlier candidate if any layer found out-of-range numbers
   const firstOutlier =
     jsonLdCandidates[0] ?? scriptCandidates[0] ?? textCandidates[0] ?? null;
 
@@ -202,26 +204,53 @@ function extractPriceFromHtml(html, currentPrice) {
   return { status: "unparsed", price: null };
 }
 
+function isRetryableError(err) {
+  const msg = String(err?.message || "");
+  return (
+    err?.name === "TimeoutError" ||
+    msg.includes("HTTP 429") ||
+    msg.includes("HTTP 500") ||
+    msg.includes("HTTP 502") ||
+    msg.includes("HTTP 503") ||
+    msg.includes("HTTP 504")
+  );
+}
+
 async function fetchPageHtml(targetUrl, renderJs = false) {
   const fetchUrl = SCRAPER_API_KEY
     ? `https://api.scraperapi.com?api_key=${encodeURIComponent(SCRAPER_API_KEY)}&url=${encodeURIComponent(targetUrl)}${renderJs ? "&render=true" : ""}`
     : targetUrl;
 
-  const response = await fetch(fetchUrl, {
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    headers: SCRAPER_API_KEY
-      ? {}
-      : {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        },
-  });
+  let lastErr;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(fetchUrl, {
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        headers: SCRAPER_API_KEY
+          ? {}
+          : {
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            },
+      });
 
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      return await response.text();
+    } catch (err) {
+      lastErr = err;
+      if (attempt < MAX_RETRIES && isRetryableError(err)) {
+        const backoffMs = 2000 * (attempt + 1);
+        await sleep(backoffMs);
+        continue;
+      }
+      throw err;
+    }
   }
 
-  return await response.text();
+  throw lastErr;
 }
 
 function auditPageTitle(row, title) {
@@ -324,7 +353,8 @@ async function processRow(row) {
       );
     }
   } catch (err) {
-    const msg = err.name === "TimeoutError" ? `Timeout after ${REQUEST_TIMEOUT_MS / 1000}s` : err.message;
+    const msg =
+      err.name === "TimeoutError" ? `Timeout after ${REQUEST_TIMEOUT_MS / 1000}s` : err.message;
     report.failed.push({
       id: row.id,
       state: row.state,
@@ -332,6 +362,10 @@ async function processRow(row) {
       error: msg,
     });
     console.log(`✕ Failed for ${label}: ${msg}`);
+  } finally {
+    if (REQUEST_DELAY_MS > 0) {
+      await sleep(REQUEST_DELAY_MS);
+    }
   }
 }
 
