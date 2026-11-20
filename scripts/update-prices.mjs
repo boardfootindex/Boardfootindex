@@ -57,9 +57,10 @@ function isValidPriceCandidate(num) {
 function detectOutOfStock(html = "") {
   if (
     /https?:\/\/schema\.org\/OutOfStock/i.test(html) ||
-    /"availability"\s*:\s*"[^"]*OutOfStock/i.test(html)
+    /"availability"\s*:\s*"[^"]*OutOfStock/i.test(html) ||
+    /"inventoryStatus"\s*:\s*"OUT_OF_STOCK"/i.test(html)
   ) {
-    return "JSON-LD availability is OutOfStock";
+    return "Out of Stock (structured data)";
   }
 
   const visibleText = html
@@ -71,15 +72,17 @@ function detectOutOfStock(html = "") {
 
   const oosPatterns = [
     /\bout of stock\b/i,
+    /\bthis item is currently unavailable\b/i,
     /\bcurrently unavailable\b/i,
     /\btemporarily unavailable\b/i,
+    /\bunavailable nearby\b/i,
     /\bsold out\b/i,
     /\bnot available in (your )?store\b/i,
   ];
 
   for (const pattern of oosPatterns) {
     if (pattern.test(visibleText)) {
-      return `Matched "${pattern.source}"`;
+      return "Out of Stock — item currently unavailable";
     }
   }
 
@@ -356,11 +359,20 @@ async function processRow(row) {
 
     let chosenPrice = null;
     let usedBackup = false;
+    let stockStatus = "in_stock";
+    let stockNote = null;
 
     if (primary.status === "ok") {
       chosenPrice = primary.price;
+      stockStatus = "in_stock";
+      stockNote = null;
     } else {
       if (primary.status === "out_of_stock") {
+        stockStatus = "out_of_stock";
+        stockNote = row.backup_url
+          ? "Primary store out of stock — showing backup option"
+          : "Primary store out of stock";
+
         report.outOfStock.push({
           id: row.id,
           state: row.state,
@@ -378,11 +390,19 @@ async function processRow(row) {
         if (backup.status === "ok") {
           chosenPrice = backup.price;
           usedBackup = true;
-          const existingOos = report.outOfStock.find(
-            (x) => x.id === row.id && x.urlType === "primary"
-          );
-          if (existingOos) existingOos.usedBackup = true;
+          if (primary.status === "out_of_stock") {
+            stockStatus = "out_of_stock";
+            stockNote = "Primary store out of stock — priced from backup store";
+            const existingOos = report.outOfStock.find(
+              (x) => x.id === row.id && x.urlType === "primary"
+            );
+            if (existingOos) existingOos.usedBackup = true;
+          }
         } else if (backup.status === "out_of_stock") {
+          if (primary.status === "out_of_stock") {
+            stockStatus = "out_of_stock";
+            stockNote = "Out of stock at both primary and backup stores";
+          }
           report.outOfStock.push({
             id: row.id,
             state: row.state,
@@ -401,7 +421,11 @@ async function processRow(row) {
 
       const { error: updateError } = await supabase
         .from("lumber_prices")
-        .update({ unit_price: newPrice })
+        .update({
+          unit_price: newPrice,
+          stock_status: stockStatus,
+          stock_note: stockNote,
+        })
         .eq("id", row.id);
 
       if (updateError) {
@@ -419,28 +443,40 @@ async function processRow(row) {
       console.log(
         `✓ Updated ${label} [${usedBackup ? "backup" : "primary"}]: $${oldPrice ?? "N/A"} -> $${newPrice}`
       );
-    } else if (primary.status === "outlier") {
-      report.outliers.push({
-        id: row.id,
-        state: row.state,
-        material: row.material_name,
-        currentPrice: row.unit_price,
-        candidatePrice: primary.candidate,
-      });
-      console.log(
-        `⚠ Outlier rejected for ${label}: candidate $${primary.candidate} vs current $${row.unit_price} (keeping $${row.unit_price})`
-      );
-    } else if (primary.status !== "out_of_stock") {
-      report.unparsed.push({
-        id: row.id,
-        state: row.state,
-        material: row.material_name,
-        currentPrice: row.unit_price,
-        title: primary.title || "No title",
-      });
-      console.log(
-        `⚠ Could not parse price for ${label} — keeping $${row.unit_price ?? "N/A"}`
-      );
+    } else {
+      if (primary.status === "out_of_stock") {
+        await supabase
+          .from("lumber_prices")
+          .update({
+            stock_status: stockStatus,
+            stock_note: stockNote,
+          })
+          .eq("id", row.id);
+      }
+
+      if (primary.status === "outlier") {
+        report.outliers.push({
+          id: row.id,
+          state: row.state,
+          material: row.material_name,
+          currentPrice: row.unit_price,
+          candidatePrice: primary.candidate,
+        });
+        console.log(
+          `⚠ Outlier rejected for ${label}: candidate $${primary.candidate} vs current $${row.unit_price} (keeping $${row.unit_price})`
+        );
+      } else if (primary.status !== "out_of_stock") {
+        report.unparsed.push({
+          id: row.id,
+          state: row.state,
+          material: row.material_name,
+          currentPrice: row.unit_price,
+          title: primary.title || "No title",
+        });
+        console.log(
+          `⚠ Could not parse price for ${label} — keeping $${row.unit_price ?? "N/A"}`
+        );
+      }
     }
   } catch (err) {
     const msg =
