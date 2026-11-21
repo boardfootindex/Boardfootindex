@@ -29,7 +29,8 @@
             Pricing Region
           </label>
           <select id="estimatorRegion" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
-            <option value="US">National Baseline</option>
+            <option value="ALL">All Regions</option>
+            <option value="US">National Baseline (US)</option>
             <option value="NE">Northeast (NE)</option>
             <option value="SE">Southeast (SE)</option>
             <option value="SC">South Central (SC)</option>
@@ -115,8 +116,8 @@
 
       <div class="flex flex-col sm:flex-row gap-3">
         <select id="tableRegionFilter" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm sm:w-56">
-          <option value="US">National Baseline</option>
           <option value="ALL">All Regions</option>
+          <option value="US">National Baseline (US)</option>
           <option value="NE">Northeast (NE)</option>
           <option value="SE">Southeast (SE)</option>
           <option value="SC">South Central (SC)</option>
@@ -177,6 +178,15 @@
       return url.toLowerCase().includes("lowes.com") ? "Lowe's ↗" : "The Home Depot ↗";
     }
 
+    function isRowOutOfStock(row) {
+      const status = String(row.stock_status || "").toLowerCase().trim();
+      if (status === "out_of_stock" || status === "out-of-stock" || status === "oos") {
+        return true;
+      }
+      const note = String(row.stock_note || "").toLowerCase();
+      return note.includes("out of stock") || note.includes("unavailable");
+    }
+
     function calcPricePerBf(row) {
       const price = Number(row.unit_price);
       if (!Number.isFinite(price) || price <= 0) return "—";
@@ -207,8 +217,8 @@
     }
 
     function renderSourceCell(row) {
-      const isOutOfStock = row.stock_status === "out_of_stock";
-      const primaryLinkClass = isOutOfStock
+      const outOfStock = isRowOutOfStock(row);
+      const primaryLinkClass = outOfStock
         ? "line-through text-slate-400 hover:underline"
         : "text-blue-600 font-medium hover:underline";
 
@@ -216,16 +226,16 @@
         ? `<a href="${escapeHtml(row.source_url)}" target="_blank" rel="noopener noreferrer" class="${primaryLinkClass}">${escapeHtml(storeLabel(row.source_url))}</a>`
         : `<span class="text-slate-400">No link</span>`;
 
-      const badgeHtml = isOutOfStock
+      const badgeHtml = outOfStock
         ? `<span class="inline-flex items-center w-fit rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Out of Stock</span>`
         : "";
 
-      const noteHtml = isOutOfStock && row.stock_note
+      const noteHtml = outOfStock && row.stock_note
         ? `<span class="text-[11px] text-amber-700">${escapeHtml(row.stock_note)}</span>`
         : "";
 
       const backupHtml = row.backup_url
-        ? `<a href="${escapeHtml(row.backup_url)}" target="_blank" rel="noopener noreferrer" class="text-xs font-semibold text-emerald-700 hover:underline">${isOutOfStock ? "Alternative: " : "Backup: "}${escapeHtml(storeLabel(row.backup_url))}</a>`
+        ? `<a href="${escapeHtml(row.backup_url)}" target="_blank" rel="noopener noreferrer" class="text-xs font-semibold text-emerald-700 hover:underline">${outOfStock ? "Alternative: " : "Backup: "}${escapeHtml(storeLabel(row.backup_url))}</a>`
         : "";
 
       return `<div class="flex flex-col gap-1">${primaryHtml}${badgeHtml}${noteHtml}${backupHtml}</div>`;
@@ -237,8 +247,9 @@
 
       return allRows.filter((row) => {
         const matchesCat = selectedCategory === "ALL" || row.category === selectedCategory;
-        const matchesRegion = region === "ALL" || (row.state || "US") === region;
-        const hay = `${row.material_name || ""} ${row.dimensions || ""} ${row.category || ""} ${row.state || ""}`.toLowerCase();
+        const rowRegion = String(row.state || "US").trim().toUpperCase();
+        const matchesRegion = region === "ALL" || rowRegion === region;
+        const hay = `${row.material_name || ""} ${row.dimensions || ""} ${row.category || ""} ${row.state || ""} ${row.stock_note || ""}`.toLowerCase();
         const matchesQuery = !query || hay.includes(query);
         return matchesCat && matchesRegion && matchesQuery;
       });
@@ -247,7 +258,7 @@
     function renderTable() {
       const rows = getFilteredRows();
       const region = document.getElementById("tableRegionFilter").value;
-      const regionLabel = region === "US" ? "National Baseline (US)" : region;
+      const regionLabel = region === "ALL" ? "All Regions" : region === "US" ? "National Baseline (US)" : region;
 
       document.getElementById("countSummary").textContent =
         `Showing ${rows.length} item${rows.length === 1 ? "" : "s"} for ${regionLabel}`;
@@ -260,13 +271,14 @@
 
       tbody.innerHTML = rows
         .map((row) => {
+          const outOfStock = isRowOutOfStock(row);
           const priceDisplay =
             row.unit_price !== null && row.unit_price !== undefined
               ? `$${Number(row.unit_price).toFixed(2)}`
               : "—";
 
           return `
-            <tr class="${row.stock_status === "out_of_stock" ? "bg-amber-50/40" : "hover:bg-slate-50"}">
+            <tr class="${outOfStock ? "bg-amber-50/40" : "hover:bg-slate-50"}">
               <td class="py-3 px-4 font-semibold text-slate-900">${escapeHtml(row.material_name)}</td>
               <td class="py-3 px-4"><span class="inline-block rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">${escapeHtml(row.state || "US")}</span></td>
               <td class="py-3 px-4 text-slate-600">${escapeHtml(row.category || "Lumber")}</td>
@@ -280,16 +292,21 @@
         .join("");
     }
 
-    function populateEstimatorSelect() {
+    function getEstimatorPool() {
       const estRegion = document.getElementById("estimatorRegion").value;
+      if (estRegion === "ALL") return allRows;
+      const matches = allRows.filter((r) => String(r.state || "US").trim().toUpperCase() === estRegion);
+      return matches.length > 0 ? matches : allRows;
+    }
+
+    function populateEstimatorSelect() {
       const select = document.getElementById("estimatorMaterial");
-      const matches = allRows.filter((r) => (r.state || "US") === estRegion);
-      const pool = matches.length > 0 ? matches : allRows;
+      const pool = getEstimatorPool();
 
       select.innerHTML = pool
         .map((r, idx) => {
           const price = Number(r.unit_price || 0).toFixed(2);
-          const oosTag = r.stock_status === "out_of_stock" ? " [OUT OF STOCK]" : "";
+          const oosTag = isRowOutOfStock(r) ? " [OUT OF STOCK]" : "";
           return `<option value="${idx}">${escapeHtml(r.material_name)} (${escapeHtml(r.dimensions || "")}) — $${price}${oosTag}</option>`;
         })
         .join("");
@@ -339,7 +356,7 @@
     async function loadCatalog() {
       const { data, error } = await db
         .from("lumber_prices")
-        .select("id, state, category, material_name, dimensions, unit_price, source_url, backup_url, stock_status, stock_note")
+        .select("*")
         .order("material_name", { ascending: true });
 
       if (error) {
@@ -399,9 +416,7 @@
           outOfStock: false,
         });
       } else {
-        const estRegion = document.getElementById("estimatorRegion").value;
-        const matches = allRows.filter((r) => (r.state || "US") === estRegion);
-        const pool = matches.length > 0 ? matches : allRows;
+        const pool = getEstimatorPool();
         const row = pool[Number(document.getElementById("estimatorMaterial").value)];
         const qty = Math.max(1, Number(document.getElementById("estimatorQty").value) || 1);
         if (row) {
@@ -409,7 +424,7 @@
             name: `${row.material_name} (${row.state || "US"})`,
             qty,
             unitPrice: Number(row.unit_price || 0),
-            outOfStock: row.stock_status === "out_of_stock",
+            outOfStock: isRowOutOfStock(row),
           });
         }
       }
