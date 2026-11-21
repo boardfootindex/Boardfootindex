@@ -421,6 +421,16 @@ p.subtitle {
   border-radius: 4px;
   vertical-align: middle;
 }
+.takeoff-alt-link {
+  margin-left: 8px;
+  color: #047857;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.takeoff-alt-link:hover {
+  text-decoration: underline;
+}
 .estimate-item-actions {
   display: flex;
   align-items: center;
@@ -928,6 +938,12 @@ function inferStoreLabel(url, fallbackName = 'View Store') {
   return fallbackName;
 }
 
+function hasDistinctBackupUrl(item) {
+  const cleanSource = String(item.source_url || '').trim();
+  const cleanBackup = String(item.backup_url || '').trim();
+  return isSafeUrl(cleanBackup) && cleanBackup !== cleanSource;
+}
+
 /* Resolve items for a given region */
 function getResolvedItemsForRegion(regionCode, withFallback = true) {
   const code = (regionCode || 'US').toUpperCase();
@@ -1050,6 +1066,7 @@ function repriceTakeoffForRegion(regionCode) {
       entry.sourceName = match.source_name || entry.sourceName;
       entry.appliedRegion = (match.state || 'US').toUpperCase();
       entry.outOfStock = isItemOutOfStock(match);
+      entry.backupUrl = hasDistinctBackupUrl(match) ? String(match.backup_url).trim() : '';
     }
   });
 }
@@ -1183,7 +1200,7 @@ function renderSourceCell(item) {
     : '';
 
   let backupHtml = '';
-  if (isSafeUrl(item.backup_url)) {
+  if (hasDistinctBackupUrl(item)) {
     const safeBackupHref = escapeHtml(String(item.backup_url).trim());
     const backupStore = escapeHtml(inferStoreLabel(item.backup_url, 'Backup Store'));
     const prefix = outOfStock ? 'Alternative:' : 'Backup:';
@@ -1194,30 +1211,34 @@ function renderSourceCell(item) {
 }
 
 /* ---------------- Unified Estimator Logic ---------------- */
+function getSortedDropdownItems() {
+  const resolvedItems = getResolvedItemsForRegion(selectedRegion, true);
+  return [...resolvedItems].sort((a, b) =>
+    (a.material_name || '').localeCompare(b.material_name || '')
+  );
+}
+
 function populateEstimatorDropdown() {
   const select = document.getElementById('material-select');
-  const resolvedItems = getResolvedItemsForRegion(selectedRegion, true);
+  const sortedForDropdown = getSortedDropdownItems();
 
-  if (!resolvedItems.length) {
+  if (!sortedForDropdown.length) {
     select.innerHTML = '<option value="">No materials available</option>';
     return;
   }
 
-  const sortedForDropdown = [...resolvedItems].sort((a, b) =>
-    (a.material_name || '').localeCompare(b.material_name || '')
-  );
-
-  select.innerHTML = sortedForDropdown.map((item, idx) => {
+  select.innerHTML = sortedForDropdown.map(item => {
+    const matKey = normalizeMaterialKey(item);
     const priceText = item.unit_price != null ? `$${Number(item.unit_price).toFixed(2)}` : 'N/A';
     const rowReg = (item.state || 'US').toUpperCase();
     const regionTag = selectedRegion !== 'US' && rowReg === selectedRegion
       ? ` [${rowReg}]`
       : '';
     const oosTag = isItemOutOfStock(item) ? ' [OUT OF STOCK]' : '';
-    return `<option value="${item.id ?? idx}">${escapeHtml(item.material_name)} (${escapeHtml(item.dimensions || '')}) — ${priceText}${regionTag}${oosTag}</option>`;
+    return `<option value="${escapeHtml(matKey)}">${escapeHtml(item.material_name)} (${escapeHtml(item.dimensions || '')}) — ${priceText}${regionTag}${oosTag}</option>`;
   }).join('');
 
-  const hardwoodItem = resolvedItems.find(
+  const hardwoodItem = sortedForDropdown.find(
     i => (i.category || '').toLowerCase().includes('hardwood') && i.price_per_board_foot != null
   );
   if (hardwoodItem) {
@@ -1356,6 +1377,9 @@ function renderEstimateList() {
     const oosBadge = entry.outOfStock
       ? `<span class="badge-oos" style="margin-left: 6px;">Out of Stock</span>`
       : '';
+    const altLinkHtml = entry.outOfStock && isSafeUrl(entry.backupUrl)
+      ? `<a class="takeoff-alt-link" href="${escapeHtml(entry.backupUrl)}" target="_blank" rel="noopener noreferrer">Alternative: ${escapeHtml(inferStoreLabel(entry.backupUrl, 'Backup Store'))} ↗</a>`
+      : '';
     const bfNote = entry.bfPerPiece
       ? ` · ${(entry.bfPerPiece * entry.qty).toFixed(2)} BF`
       : '';
@@ -1364,7 +1388,7 @@ function renderEstimateList() {
     return `
       <div class="estimate-item">
         <div class="estimate-item-info">
-          <strong>${escapeHtml(entry.name)}</strong>${customBadge}${regionBadge}${oosBadge}
+          <strong>${escapeHtml(entry.name)}</strong>${customBadge}${regionBadge}${oosBadge}${altLinkHtml}
           <div style="color: #666; font-size: 0.88rem; margin-top: 2px;">
             ${escapeHtml(entry.dimensions || '—')} · ${formatPrice(entry.unitPrice)} ${escapeHtml(entry.unitLabel || '')}${bfNote}${storeNote}
           </div>
@@ -1473,8 +1497,8 @@ function setupEstimator() {
     const selectedVal = select.value;
     const qty = Math.max(1, parseInt(qtyInput.value, 10) || 1);
 
-    const resolvedPool = getResolvedItemsForRegion(selectedRegion, true);
-    const matchedItem = resolvedPool.find((item, idx) => String(item.id ?? idx) === String(selectedVal));
+    const dropdownPool = getSortedDropdownItems();
+    const matchedItem = dropdownPool.find(item => normalizeMaterialKey(item) === selectedVal);
     if (!matchedItem) return;
 
     const matKey = normalizeMaterialKey(matchedItem);
@@ -1485,6 +1509,7 @@ function setupEstimator() {
       existing.unitPrice = Number(matchedItem.unit_price || 0);
       existing.appliedRegion = (matchedItem.state || 'US').toUpperCase();
       existing.outOfStock = isItemOutOfStock(matchedItem);
+      existing.backupUrl = hasDistinctBackupUrl(matchedItem) ? String(matchedItem.backup_url).trim() : '';
     } else {
       estimateItems.push({
         key,
@@ -1496,6 +1521,7 @@ function setupEstimator() {
         sourceName: matchedItem.source_name || '',
         appliedRegion: (matchedItem.state || 'US').toUpperCase(),
         outOfStock: isItemOutOfStock(matchedItem),
+        backupUrl: hasDistinctBackupUrl(matchedItem) ? String(matchedItem.backup_url).trim() : '',
         qty,
         isCustom: false,
         bfPerPiece: null
@@ -1527,6 +1553,7 @@ function setupEstimator() {
         sourceName: 'Custom BF',
         appliedRegion: selectedRegion,
         outOfStock: false,
+        backupUrl: '',
         qty,
         isCustom: true,
         bfPerPiece
